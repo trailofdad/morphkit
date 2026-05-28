@@ -7,7 +7,7 @@
 // Enums & Literal Types
 // ---------------------------------------------------------------------------
 
-/** Inheritance pattern for a locus. */
+/** Inheritance pattern for a locus — used by MK-2 via CDN Dictionary lookup. */
 export type InheritancePattern =
   | 'recessive'
   | 'dominant'
@@ -17,6 +17,23 @@ export type InheritancePattern =
 /** The sex of an animal, used for sex-linked locus calculations. */
 export type AnimalSex = 'male' | 'female';
 
+/** Determines how polygenic traits are expanded (standard vs. diagnostic mode). */
+export type CalculationMode = 'standard' | 'diagnostic';
+
+// ---------------------------------------------------------------------------
+// CDN Dictionary — passed to the worker by the main thread (MK-5),
+// then forwarded into the engine so MK-2 can resolve inheritance patterns.
+// ---------------------------------------------------------------------------
+
+/** One entry in the CDN Dictionary, keyed by locusId. */
+export interface LocusDictionaryEntry {
+  readonly locusId: string;
+  readonly inheritancePattern: InheritancePattern;
+}
+
+/** The full CDN Dictionary payload the main thread fetches and forwards. */
+export type CdnDictionary = readonly LocusDictionaryEntry[];
+
 // ---------------------------------------------------------------------------
 // Input Payload — what the caller sends to the engine
 // ---------------------------------------------------------------------------
@@ -25,24 +42,21 @@ export type AnimalSex = 'male' | 'female';
  * Represents one locus on an animal, as provided by the caller.
  * An implicit input may omit the second allele (e.g., just ["Clown"]),
  * which the MK-1 Validation layer will normalize to ["Clown", "Normal"].
+ * alleles is typed as readonly string[] to reflect raw JSON boundary reality;
+ * MK-1 validates that length is 1 or 2.
  */
 export interface LocusInput {
-  /** The name of the gene/trait (e.g., "Clown", "Spider", "Banana"). */
-  readonly geneName: string;
-  /** Alleles present. Must have 1 or 2 elements before normalization. */
-  readonly alleles: [string] | [string, string];
-  /** Inheritance pattern for this locus. */
-  readonly inheritancePattern: InheritancePattern;
+  readonly locusId: string;
+  readonly alleles: readonly string[];
 }
 
 /** Represents one animal in the breeding pair as provided by the caller. */
 export interface AnimalInput {
-  /** Optional display label for the animal. */
-  readonly label?: string;
-  /** Declared sex; required when any locus is sex-linked. */
+  readonly id: string;
+  /** Declared sex; MK-1 throws SchemaValidationError if absent or invalid. */
   readonly sex?: AnimalSex;
-  /** All loci expressed or carried by this animal. */
-  readonly loci: readonly LocusInput[];
+  readonly genotype: readonly LocusInput[];
+  readonly polygenics: readonly string[];
 }
 
 /**
@@ -50,6 +64,8 @@ export interface AnimalInput {
  * AC-4: explicitly exported.
  */
 export interface MorphkitCalculationInput {
+  /** Defaults to "standard" if omitted. */
+  readonly calculationMode?: CalculationMode;
   readonly sire: AnimalInput;
   readonly dam: AnimalInput;
 }
@@ -60,27 +76,30 @@ export interface MorphkitCalculationInput {
 
 /**
  * A fully normalized locus: exactly 2 alleles, never implicit.
- * The engine (MK-2) only ever receives this form.
+ * The engine (MK-2) only ever receives this form. inheritancePattern is
+ * resolved by MK-2 via CDN Dictionary lookup, not by MK-1.
  */
 export interface NormalizedLocus {
-  readonly geneName: string;
+  readonly locusId: string;
   /** Exactly 2 alleles — e.g., ["Clown", "Normal"] or ["Clown", "Clown"]. */
   readonly alleles: [string, string];
-  readonly inheritancePattern: InheritancePattern;
 }
 
 /** One animal after MK-1 normalization. */
 export interface NormalizedAnimal {
-  readonly label?: string;
-  /** Sex is always present after normalization if any sex-linked locus exists. */
-  readonly sex?: AnimalSex;
-  readonly loci: readonly NormalizedLocus[];
+  readonly id: string;
+  /** Sex is always present after MK-1 validation. */
+  readonly sex: AnimalSex;
+  readonly genotype: readonly NormalizedLocus[];
+  readonly polygenics: readonly string[];
 }
 
 /**
  * The breeding pair after MK-1 normalization; this is what MK-2 receives.
  */
 export interface NormalizedBreedingPair {
+  /** Always resolved; never undefined after MK-1. */
+  readonly calculationMode: CalculationMode;
   readonly sire: NormalizedAnimal;
   readonly dam: NormalizedAnimal;
 }
@@ -116,8 +135,10 @@ export type PhenotypeName = string;
  * A "possible het" marker, e.g. "66% Possible Het Clown".
  */
 export interface PossibleHet {
-  readonly geneName: string;
+  readonly locusId: string;
   readonly probability: number; // 0–1
+  /** True when every non-visual offspring at this locus must be a carrier (probability === 1.0). */
+  readonly isGuaranteed: boolean;
 }
 
 /**
@@ -142,6 +163,8 @@ export interface AggregatedOutcome {
   readonly congenitalWarnings: readonly string[];
   /** Sex of this offspring, if known. */
   readonly sex?: AnimalSex;
+  /** Deduplicated polygenics from both parents, injected by MK-3. */
+  readonly polygenics: readonly string[];
 }
 
 /**
@@ -172,11 +195,11 @@ export class SchemaValidationError extends Error {
   }
 }
 
-/** Thrown when a locus array has more than 2 alleles (MK-1 / MK-2). */
+/** Thrown when a locus array has an invalid number of alleles (MK-1 / MK-2). */
 export class InvalidGenotypeError extends Error {
   constructor(
     message: string,
-    public readonly geneName?: string,
+    public readonly locusId?: string,
   ) {
     super(message);
     this.name = 'InvalidGenotypeError';
@@ -195,4 +218,44 @@ export class CartesianMatrixError extends Error {
     super(message);
     this.name = 'CartesianMatrixError';
   }
+}
+
+// --- DICTIONARY TYPES ---
+
+export type InheritanceType = "recessive" | "dominant" | "incomplete_dominant" | "polygenic";
+
+export interface AlleleDefinition {
+  id: string;             // e.g., "spider", "banana_malemaker"
+  name: string;           // e.g., "Spider", "Banana (Male Maker)"
+  defects?: string[];     // e.g., ["Neurological Wobble"]
+}
+
+export interface LocusDefinition {
+  id: string;                     // e.g., "yellowbelly_complex"
+  name: string;                   // e.g., "Yellowbelly Complex"
+  inheritance: InheritanceType;
+  isSexLinked: boolean;           // True for Banana/Coral Glow
+  alleles: Record<string, AlleleDefinition>; // O(1) lookup map of alleles at this locus
+}
+
+export interface ComboDefinition {
+  marketName: string;             // e.g., "Freeway"
+  // Map of locusId to required alleles.
+  // e.g., { "yellowbelly_complex": ["yellowbelly", "asphalt"] }
+  requiredGenotype: Record<string, [string, string]>;
+}
+
+export interface LethalComboDefinition {
+  // Loci conditions that trigger embryonic lethality
+  // e.g., { "spider_complex": ["spider", "spider"] }
+  triggerGenotype: Record<string, [string, string]>;
+}
+
+export interface MorphkitDictionary {
+  version: string;
+  lastUpdated: string;
+  loci: Record<string, LocusDefinition>;           // O(1) Locus lookup
+  combos: ComboDefinition[];                       // Array of market combos to match against
+  lethalCombos: LethalComboDefinition[];           // Array of unviable genetic states
+  polygenicTags: string[];                         // Valid known polygenics (e.g., "Jungle")
 }
