@@ -114,18 +114,27 @@ export function aggregateOutcomes(
   // REQ-3.4: Deduplicated polygenics from both parents, injected into every outcome.
   const polygenics = [...new Set([...pair.sire.polygenics, ...pair.dam.polygenics])];
 
-  // REQ-3.2: Precompute total non-visual probability per recessive locus for poss-het math.
-  const nonVisualTotals = new Map<string, number>();
+  // REQ-3.2: Precompute MARGINAL carrier and non-visual probability per recessive locus.
+  //
+  // Poss-het % must be a locus-level conditional probability:
+  //   P(carrier at locus | non-visual at locus) = marginalCarrier / marginalNonVisual
+  //
+  // Using a full-genome outcome probability as the numerator was wrong: in a
+  // multi-locus cross each individual outcome's probability is a fraction of the
+  // product of all locus probabilities, so the ratio produced values like 13%
+  // instead of the expected Mendelian 100%/66%/50%.  By marginalising across
+  // all outcomes we recover a number that is independent of every other locus
+  // (independent assortment) and matches standard Punnett-square expectations.
+  const locusMargins = new Map<string, { nonVisual: number; carrier: number }>();
   for (const outcome of outcomes) {
     for (const locus of outcome.loci) {
       const locusDef = dictionary.loci[locus.locusId];
       if (!locusDef || locusDef.inheritance !== 'recessive') continue;
-      if (!isVisualAtLocus(locus.alleles, 'recessive')) {
-        nonVisualTotals.set(
-          locus.locusId,
-          (nonVisualTotals.get(locus.locusId) ?? 0) + outcome.decimalProbability,
-        );
-      }
+      if (isVisualAtLocus(locus.alleles, 'recessive')) continue;
+      const m = locusMargins.get(locus.locusId) ?? { nonVisual: 0, carrier: 0 };
+      m.nonVisual += outcome.decimalProbability;
+      if (isCarrierAtLocus(locus.alleles)) m.carrier += outcome.decimalProbability;
+      locusMargins.set(locus.locusId, m);
     }
   }
 
@@ -138,9 +147,8 @@ export function aggregateOutcomes(
       if (!locusDef || locusDef.inheritance !== 'recessive') continue;
       if (isVisualAtLocus(locus.alleles, 'recessive') || !isCarrierAtLocus(locus.alleles)) continue;
 
-      // Poss-het probability = this outcome's probability / total non-visual probability for the trait.
-      const nonVisualTotal = nonVisualTotals.get(locus.locusId) ?? 0;
-      const probability = nonVisualTotal > 0 ? outcome.decimalProbability / nonVisualTotal : 0;
+      const m = locusMargins.get(locus.locusId);
+      const probability = m && m.nonVisual > 0 ? m.carrier / m.nonVisual : 0;
       possibleHets.push({ locusId: locus.locusId, probability, isGuaranteed: probability >= 1.0 });
     }
 

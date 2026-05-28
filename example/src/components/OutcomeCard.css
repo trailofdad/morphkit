@@ -1,0 +1,85 @@
+.outcome-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow 0.15s;
+}
+
+.outcome-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.outcome-card--lethal {
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.outcome-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.outcome-card__name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #1a202c;
+}
+
+.outcome-card__probability {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2b6cb0;
+  white-space: nowrap;
+}
+
+.outcome-card__hets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.outcome-card__hets li {
+  font-size: 0.78rem;
+  background: #ebf4ff;
+  color: #2b6cb0;
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.outcome-card__lethal-banner {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #c53030;
+  background: #fed7d7;
+  border-radius: 4px;
+  padding: 4px 10px;
+  letter-spacing: 0.04em;
+}
+
+.outcome-card__warnings {
+  font-size: 0.82rem;
+  color: #7b341e;
+  background: #feebc8;
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+
+.outcome-card__warnings strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.outcome-card__warnings ul {
+  list-style: disc;
+  margin: 0;
+  padding-left: 16px;
+}

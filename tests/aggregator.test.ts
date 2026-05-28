@@ -97,6 +97,90 @@ describe('AC-1: het clown × het clown — recessive poss-het math', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Poss-het: independent assortment — multi-locus cross must not dilute poss-het %
+// ---------------------------------------------------------------------------
+
+describe('independent assortment — poss-het % is locus-isolated, not diluted by extra loci', () => {
+  it('het clown × normal with a co-dominant locus: every carrier card shows 50%, not 25%', () => {
+    // Two loci: yellowbelly (incomplete_dominant) + clown (recessive).
+    // Sire: yellowbelly/normal + clown/normal.  Dam: normal/normal + normal/normal.
+    // At clown_locus alone: 50% carrier, 50% clear → poss-het should be 50% on every carrier card.
+    // The co-dominant yellowbelly locus must not reduce the displayed poss-het value.
+    const pair = makePair({
+      sire: {
+        id: 'sire', sex: 'male',
+        genotype: [
+          { locusId: 'yellowbelly_complex', alleles: ['yellowbelly', 'normal'] },
+          { locusId: 'clown_locus', alleles: ['clown', 'normal'] },
+        ],
+        polygenics: [],
+      },
+      dam: {
+        id: 'dam', sex: 'female',
+        genotype: [
+          { locusId: 'yellowbelly_complex', alleles: ['normal', 'normal'] },
+          { locusId: 'clown_locus', alleles: ['normal', 'normal'] },
+        ],
+        polygenics: [],
+      },
+    });
+    const genotypes = computePunnettMatrix(pair, []);
+    const outcomes = aggregateOutcomes(genotypes, pair, mockDictionary);
+
+    const carrierOutcomes = outcomes.filter((o) => {
+      const cl = o.genotype.loci.find((l) => l.locusId === 'clown_locus');
+      return cl && cl.alleles.includes('clown') && !o.phenotypeNames.includes('Clown');
+    });
+
+    expect(carrierOutcomes.length).toBeGreaterThan(0);
+    for (const outcome of carrierOutcomes) {
+      const possHet = outcome.possibleHets.find((p) => p.locusId === 'clown_locus');
+      expect(possHet).toBeDefined();
+      // Must be 50% regardless of yellowbelly trait — independent assortment.
+      expect(possHet!.probability).toBe(0.5);
+    }
+  });
+
+  it('guaranteed het is preserved across multi-locus cross (visual clown dam × het clown sire)', () => {
+    // At clown_locus: sire clown/normal × dam clown/clown → all non-visual are guaranteed hets.
+    // Adding a co-dominant locus must not break the 100% / isGuaranteed: true result.
+    const pair = makePair({
+      sire: {
+        id: 'sire', sex: 'male',
+        genotype: [
+          { locusId: 'yellowbelly_complex', alleles: ['yellowbelly', 'normal'] },
+          { locusId: 'clown_locus', alleles: ['clown', 'normal'] },
+        ],
+        polygenics: [],
+      },
+      dam: {
+        id: 'dam', sex: 'female',
+        genotype: [
+          { locusId: 'yellowbelly_complex', alleles: ['normal', 'normal'] },
+          { locusId: 'clown_locus', alleles: ['clown', 'clown'] },
+        ],
+        polygenics: [],
+      },
+    });
+    const genotypes = computePunnettMatrix(pair, []);
+    const outcomes = aggregateOutcomes(genotypes, pair, mockDictionary);
+
+    const carrierOutcomes = outcomes.filter((o) => {
+      const cl = o.genotype.loci.find((l) => l.locusId === 'clown_locus');
+      return cl && cl.alleles.includes('clown') && !o.phenotypeNames.includes('Clown');
+    });
+
+    expect(carrierOutcomes.length).toBeGreaterThan(0);
+    for (const outcome of carrierOutcomes) {
+      const possHet = outcome.possibleHets.find((p) => p.locusId === 'clown_locus');
+      expect(possHet).toBeDefined();
+      expect(possHet!.probability).toBe(1.0);
+      expect(possHet!.isGuaranteed).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Poss-het: het × normal cross → 50%
 // ---------------------------------------------------------------------------
 

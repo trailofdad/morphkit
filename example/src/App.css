@@ -1,0 +1,136 @@
+.app {
+  min-height: 100vh;
+  background: #f7fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #2d3748;
+}
+
+.app__header {
+  background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+  color: white;
+  padding: 28px 32px 24px;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.app__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  opacity: 0.75;
+}
+
+.app__main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+/* ── Pairing card ── */
+
+.pairing-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pairing-card__animals {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pairing-card__animal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pairing-card__sex {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.pairing-card__animal-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.pairing-card__genes {
+  font-size: 0.8rem;
+  color: #718096;
+  margin-top: 2px;
+}
+
+.pairing-card__cross {
+  font-size: 1.5rem;
+  color: #a0aec0;
+  font-weight: 300;
+}
+
+.pairing-card__btn {
+  align-self: flex-start;
+  background: #2b6cb0;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.pairing-card__btn:hover:not(:disabled) {
+  background: #2c5282;
+}
+
+.pairing-card__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pairing-card__error {
+  color: #c53030;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* ── Results meta ── */
+
+.results-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #718096;
+  margin-bottom: 16px;
+}
+
+.results-meta__lethal {
+  color: #c53030;
+  font-weight: 600;
+}
+
+.results-meta__time {
+  margin-left: auto;
+}
+
+/* ── Outcome grid ── */
+
+.outcomes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
