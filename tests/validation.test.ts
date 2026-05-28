@@ -32,13 +32,13 @@ function makeInput(overrides: Partial<MorphkitCalculationInput> = {}): MorphkitC
 // ---------------------------------------------------------------------------
 
 describe('AC-1: locus normalization and symmetry', () => {
-  it('expands a single-allele sire locus to [allele, "Normal"]', () => {
+  it('expands a single-allele sire locus to [allele, "normal"]', () => {
     const result = normalizeInput(
       makeInput({
         sire: {
           id: 'sire-1',
           sex: 'male',
-          genotype: [{ locusId: 'clown_locus', alleles: ['Clown'] }],
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown'] }],
           polygenics: [],
         },
         dam: {
@@ -51,16 +51,47 @@ describe('AC-1: locus normalization and symmetry', () => {
     );
 
     const sireLocus = result.sire.genotype.find((l) => l.locusId === 'clown_locus');
-    expect(sireLocus?.alleles).toEqual(['Clown', 'Normal']);
+    expect(sireLocus?.alleles).toEqual(['clown', 'normal']);
   });
 
-  it('injects ["Normal", "Normal"] into dam when locus only present on sire', () => {
+  it('coerces mixed-case input alleles to lowercase', () => {
     const result = normalizeInput(
       makeInput({
         sire: {
           id: 'sire-1',
           sex: 'male',
-          genotype: [{ locusId: 'clown_locus', alleles: ['Clown'] }],
+          genotype: [{ locusId: 'clown_locus', alleles: ['Clown', 'Normal'] }],
+          polygenics: [],
+        },
+      }),
+    );
+
+    const sireLocus = result.sire.genotype.find((l) => l.locusId === 'clown_locus');
+    expect(sireLocus?.alleles).toEqual(['clown', 'normal']);
+  });
+
+  it('coerces mixed-case locusId to lowercase', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1',
+          sex: 'male',
+          genotype: [{ locusId: 'Clown_Locus', alleles: ['clown'] }],
+          polygenics: [],
+        },
+      }),
+    );
+
+    expect(result.sire.genotype[0].locusId).toBe('clown_locus');
+  });
+
+  it('injects ["normal", "normal"] into dam when locus only present on sire', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1',
+          sex: 'male',
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown'] }],
           polygenics: [],
         },
         dam: {
@@ -73,40 +104,40 @@ describe('AC-1: locus normalization and symmetry', () => {
     );
 
     const damLocus = result.dam.genotype.find((l) => l.locusId === 'clown_locus');
-    expect(damLocus?.alleles).toEqual(['Normal', 'Normal']);
+    expect(damLocus?.alleles).toEqual(['normal', 'normal']);
   });
 
-  it('injects ["Normal", "Normal"] into sire when locus only present on dam', () => {
+  it('injects ["normal", "normal"] into sire when locus only present on dam', () => {
     const result = normalizeInput(
       makeInput({
         sire: { id: 'sire-1', sex: 'male', genotype: [], polygenics: [] },
         dam: {
           id: 'dam-1',
           sex: 'female',
-          genotype: [{ locusId: 'pastel_locus', alleles: ['Pastel'] }],
+          genotype: [{ locusId: 'pastel_locus', alleles: ['pastel'] }],
           polygenics: [],
         },
       }),
     );
 
     const sireLocus = result.sire.genotype.find((l) => l.locusId === 'pastel_locus');
-    expect(sireLocus?.alleles).toEqual(['Normal', 'Normal']);
+    expect(sireLocus?.alleles).toEqual(['normal', 'normal']);
   });
 
-  it('passes through a two-allele locus unchanged', () => {
+  it('passes through a two-allele locus with lowercasing applied', () => {
     const result = normalizeInput(
       makeInput({
         sire: {
           id: 'sire-1',
           sex: 'male',
-          genotype: [{ locusId: 'clown_locus', alleles: ['Clown', 'Clown'] }],
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown', 'clown'] }],
           polygenics: [],
         },
       }),
     );
 
     const sireLocus = result.sire.genotype.find((l) => l.locusId === 'clown_locus');
-    expect(sireLocus?.alleles).toEqual(['Clown', 'Clown']);
+    expect(sireLocus?.alleles).toEqual(['clown', 'clown']);
   });
 
   it('handles multiple loci with mixed symmetry', () => {
@@ -116,15 +147,15 @@ describe('AC-1: locus normalization and symmetry', () => {
           id: 'sire-1',
           sex: 'male',
           genotype: [
-            { locusId: 'clown_locus', alleles: ['Clown'] },
-            { locusId: 'spider_locus', alleles: ['Spider', 'Normal'] },
+            { locusId: 'clown_locus', alleles: ['clown'] },
+            { locusId: 'spider_complex', alleles: ['spider', 'normal'] },
           ],
           polygenics: [],
         },
         dam: {
           id: 'dam-1',
           sex: 'female',
-          genotype: [{ locusId: 'clown_locus', alleles: ['Clown'] }],
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown'] }],
           polygenics: [],
         },
       }),
@@ -133,8 +164,8 @@ describe('AC-1: locus normalization and symmetry', () => {
     expect(result.sire.genotype).toHaveLength(2);
     expect(result.dam.genotype).toHaveLength(2);
 
-    const damSpider = result.dam.genotype.find((l) => l.locusId === 'spider_locus');
-    expect(damSpider?.alleles).toEqual(['Normal', 'Normal']);
+    const damSpider = result.dam.genotype.find((l) => l.locusId === 'spider_complex');
+    expect(damSpider?.alleles).toEqual(['normal', 'normal']);
   });
 
   it('preserves polygenics on both animals', () => {
@@ -233,7 +264,7 @@ describe('AC-3: allele cardinality', () => {
       sire: {
         id: 'sire-1',
         sex: 'male',
-        genotype: [{ locusId: 'clown_locus', alleles: ['Clown', 'Pastel', 'Normal'] }],
+        genotype: [{ locusId: 'clown_locus', alleles: ['clown', 'pastel', 'normal'] }],
         polygenics: [],
       },
     });
@@ -246,7 +277,7 @@ describe('AC-3: allele cardinality', () => {
       sire: {
         id: 'sire-1',
         sex: 'male',
-        genotype: [{ locusId: 'clown_locus', alleles: ['Clown', 'Pastel', 'Normal'] }],
+        genotype: [{ locusId: 'clown_locus', alleles: ['clown', 'pastel', 'normal'] }],
         polygenics: [],
       },
     });
@@ -307,15 +338,15 @@ describe('output shape', () => {
           id: 'sire-1',
           sex: 'male',
           genotype: [
-            { locusId: 'a', alleles: ['X'] },
-            { locusId: 'b', alleles: ['Y', 'Z'] },
+            { locusId: 'a', alleles: ['x'] },
+            { locusId: 'b', alleles: ['y', 'z'] },
           ],
           polygenics: [],
         },
         dam: {
           id: 'dam-1',
           sex: 'female',
-          genotype: [{ locusId: 'a', alleles: ['W'] }],
+          genotype: [{ locusId: 'a', alleles: ['w'] }],
           polygenics: [],
         },
       }),
@@ -336,15 +367,15 @@ describe('output shape', () => {
           id: 'sire-1',
           sex: 'male',
           genotype: [
-            { locusId: 'clown_locus', alleles: ['Clown'] },
-            { locusId: 'spider_locus', alleles: ['Spider'] },
+            { locusId: 'clown_locus', alleles: ['clown'] },
+            { locusId: 'spider_complex', alleles: ['spider'] },
           ],
           polygenics: [],
         },
         dam: {
           id: 'dam-1',
           sex: 'female',
-          genotype: [{ locusId: 'pastel_locus', alleles: ['Pastel'] }],
+          genotype: [{ locusId: 'pastel_locus', alleles: ['pastel'] }],
           polygenics: [],
         },
       }),
@@ -360,15 +391,15 @@ describe('output shape', () => {
       sire: {
         id: 'sire-1',
         sex: 'male',
-        genotype: [{ locusId: 'clown_locus', alleles: ['Clown'] }],
+        genotype: [{ locusId: 'clown_locus', alleles: ['clown'] }],
         polygenics: [],
       },
     });
-    const originalGenotypLength = original.sire.genotype.length;
+    const originalGenotypeLength = original.sire.genotype.length;
 
     normalizeInput(original);
 
-    expect(original.sire.genotype).toHaveLength(originalGenotypLength);
+    expect(original.sire.genotype).toHaveLength(originalGenotypeLength);
     expect(original.dam.genotype).toHaveLength(0);
   });
 });

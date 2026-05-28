@@ -81,7 +81,7 @@ function buildLocusMatrix(
     // For sex-linked loci, alleles on the sire's Y chromosome (tagged
     // _MaleMaker) route to male offspring; all others are X-linked → female.
     const sex: AnimalSex | undefined = sexLinked
-      ? sireAllele.endsWith('_MaleMaker')
+      ? sireAllele.endsWith('_malemaker')
         ? 'male'
         : 'female'
       : undefined;

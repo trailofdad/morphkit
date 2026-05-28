@@ -12,7 +12,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function isNormal(alleleId: string): boolean {
-  return alleleId.toLowerCase() === 'normal';
+  return alleleId === 'normal';
 }
 
 // REQ-3.1: Recessive → visual only if homozygous mutant; dominant/incomplete_dominant/polygenic → visual if any allele is mutant.

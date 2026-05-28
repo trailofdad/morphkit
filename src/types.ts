@@ -259,3 +259,56 @@ export interface MorphkitDictionary {
   lethalCombos: LethalComboDefinition[];           // Array of unviable genetic states
   polygenicTags: string[];                         // Valid known polygenics (e.g., "Jungle")
 }
+
+// ---------------------------------------------------------------------------
+// Worker Message Protocol (MK-5)
+// ---------------------------------------------------------------------------
+
+/** Message sent from main thread → worker to trigger a calculation. */
+export interface WorkerCalculateMessage {
+  type: 'CALCULATE';
+  input: MorphkitCalculationInput;
+  dictionary: MorphkitDictionary;
+}
+
+/** Serialized error payload sent from worker → main thread on failure. */
+export interface WorkerErrorPayload {
+  name: string;
+  message: string;
+  field?: string;
+  locusId?: string;
+  actualSum?: number;
+}
+
+/** Success response sent from worker → main thread. */
+export interface WorkerSuccessMessage {
+  type: 'SUCCESS';
+  output: MorphkitCalculationOutput;
+}
+
+/** Error response sent from worker → main thread. */
+export interface WorkerErrorMessage {
+  type: 'ERROR';
+  error: WorkerErrorPayload;
+}
+
+/** Union of all messages the worker can post back to the main thread. */
+export type WorkerOutboundMessage = WorkerSuccessMessage | WorkerErrorMessage;
+
+// ---------------------------------------------------------------------------
+// Network Error Types (MK-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by syncDictionary when the CDN fetch fails and no local cache exists
+ * to fall back to (cold-start offline scenario).
+ */
+export class DictionaryNetworkError extends Error {
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'DictionaryNetworkError';
+  }
+}

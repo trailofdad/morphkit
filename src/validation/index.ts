@@ -52,7 +52,7 @@ function normalizeLocus(locus: LocusInput, path: string): NormalizedLocus {
   if (locus.alleles.length > 2) {
     throw new InvalidGenotypeError(
       `Locus at ${path} has ${locus.alleles.length} alleles; maximum is 2`,
-      locus.locusId,
+      locus.locusId.toLowerCase(),
     );
   }
   if (locus.alleles.length === 0) {
@@ -63,10 +63,10 @@ function normalizeLocus(locus: LocusInput, path: string): NormalizedLocus {
   }
   const alleles: [string, string] =
     locus.alleles.length === 2
-      ? [locus.alleles[0], locus.alleles[1]]
-      : [locus.alleles[0], 'Normal'];
+      ? [locus.alleles[0].toLowerCase(), locus.alleles[1].toLowerCase()]
+      : [locus.alleles[0].toLowerCase(), 'normal'];
 
-  return { locusId: locus.locusId, alleles };
+  return { locusId: locus.locusId.toLowerCase(), alleles };
 }
 
 function ensureLocusSymmetry(
@@ -75,7 +75,7 @@ function ensureLocusSymmetry(
 ): { sire: NormalizedAnimal; dam: NormalizedAnimal } {
   const sireIds = new Set(sire.genotype.map((l) => l.locusId));
   const damIds = new Set(dam.genotype.map((l) => l.locusId));
-  const placeholder: [string, string] = ['Normal', 'Normal'];
+  const placeholder: [string, string] = ['normal', 'normal'];
 
   const sireExtra = [...damIds]
     .filter((id) => !sireIds.has(id))
