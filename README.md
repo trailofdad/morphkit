@@ -24,16 +24,27 @@ Morphkit is a pure-computation library with no runtime dependencies. The trait d
 
 ### 1. Fetch the dictionary
 
+In production, pin to an immutable version tag. jsDelivr permanently caches versioned URLs, so there is no edge-propagation delay. Drive the version from an environment variable so a dictionary update is a config change, not a code deploy:
+
 ```ts
 import { syncDictionary } from 'morphkit';
 
-const CDN_URL =
-  'https://cdn.jsdelivr.net/gh/trailofdad/morphkit-dictionary@latest/dictionary.json';
-
-const dictionary = await syncDictionary(CDN_URL);
+const version = process.env.DICTIONARY_VERSION ?? '1.0.0';
+const dictionary = await syncDictionary(
+  `https://cdn.jsdelivr.net/gh/trailofdad/morphkit-dictionary@${version}/dictionary.json`
+);
 ```
 
-`syncDictionary` uses a stale-while-revalidate `localStorage` cache (24-hour TTL). On a warm cache the call returns synchronously; on a cold start it awaits the CDN fetch. If you are offline with no cache, it throws `DictionaryNetworkError`.
+For local development only, `@latest` is fine:
+
+```ts
+// DEV ONLY — do not use in production (jsDelivr caches @latest for up to 24 h)
+const dictionary = await syncDictionary(
+  'https://cdn.jsdelivr.net/gh/trailofdad/morphkit-dictionary@latest/dictionary.json'
+);
+```
+
+`syncDictionary` uses a stale-while-revalidate `localStorage` cache (24-hour TTL). On a warm cache the call returns synchronously; on a cold start it awaits the CDN fetch. If you are offline with no cache, it throws `DictionaryNetworkError`. See the [dictionary repo](https://github.com/trailofdad/morphkit-dictionary) for current version numbers.
 
 ### 2. Run a calculation
 
@@ -43,10 +54,10 @@ The example below pairs two Het Clown animals and returns all possible offspring
 import { calculateMorphsAsync, syncDictionary } from 'morphkit';
 import type { MorphkitCalculationInput } from 'morphkit';
 
-const CDN_URL =
-  'https://cdn.jsdelivr.net/gh/trailofdad/morphkit-dictionary@latest/dictionary.json';
-
-const dictionary = await syncDictionary(CDN_URL);
+const version = process.env.DICTIONARY_VERSION ?? '1.0.0';
+const dictionary = await syncDictionary(
+  `https://cdn.jsdelivr.net/gh/trailofdad/morphkit-dictionary@${version}/dictionary.json`
+);
 
 const input: MorphkitCalculationInput = {
   sire: {
