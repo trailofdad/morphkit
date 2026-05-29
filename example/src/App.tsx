@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMorphkit } from './hooks/useMorphkit';
-import { mockDictionary } from './mockDictionary';
+import { syncDictionary } from '../../src/network';
 import { OutcomeCard } from './components/OutcomeCard';
-import type { AggregatedOutcome, MorphkitCalculationInput } from '../../src/types';
+import type { AggregatedOutcome, MorphkitCalculationInput, MorphkitDictionary } from '../../src/types';
 import './App.css';
 
 // ♂ Freeway Spider Het-Clown  ×  ♀ Spider Clown Black Head
@@ -36,11 +36,20 @@ const TEST_INPUT: MorphkitCalculationInput = {
 
 export default function App(): JSX.Element {
   const { calculateMorphsAsync, isCalculating, error } = useMorphkit();
+  const [dictionary, setDictionary] = useState<MorphkitDictionary | null>(null);
+  const [dictionaryError, setDictionaryError] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<readonly AggregatedOutcome[] | null>(null);
   const [calculatedAt, setCalculatedAt] = useState<string | null>(null);
 
+  useEffect(() => {
+    syncDictionary(import.meta.env.VITE_DICTIONARY_URL)
+      .then(setDictionary)
+      .catch((err: unknown) => setDictionaryError((err as Error).message));
+  }, []);
+
   const handleCalculate = async (): Promise<void> => {
-    const result = await calculateMorphsAsync(TEST_INPUT, mockDictionary);
+    if (!dictionary) return;
+    const result = await calculateMorphsAsync(TEST_INPUT, dictionary);
     setOutcomes(result.outcomes);
     setCalculatedAt(result.calculatedAt);
   };
@@ -82,11 +91,12 @@ export default function App(): JSX.Element {
           <button
             className="pairing-card__btn"
             onClick={() => void handleCalculate()}
-            disabled={isCalculating}
+            disabled={isCalculating || !dictionary}
           >
-            {isCalculating ? 'Calculating…' : 'Calculate'}
+            {isCalculating ? 'Calculating…' : dictionary ? 'Calculate' : 'Loading dictionary…'}
           </button>
 
+          {dictionaryError && <p className="pairing-card__error">Dictionary error: {dictionaryError}</p>}
           {error && <p className="pairing-card__error">{error}</p>}
         </section>
 

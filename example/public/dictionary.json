@@ -1,0 +1,226 @@
+{
+  "version": "1.1.0",
+  "lastUpdated": "2026-05-28T12:00:00Z",
+
+  "loci": {
+
+    "clown_locus": {
+      "id": "clown_locus",
+      "name": "Clown",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":  { "id": "normal", "name": "Normal" },
+        "clown":   { "id": "clown",  "name": "Clown"  }
+      }
+    },
+
+    "pied_locus": {
+      "id": "pied_locus",
+      "name": "Piebald",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal" },
+        "pied":   { "id": "pied",   "name": "Pied"   }
+      }
+    },
+
+    "albino_locus": {
+      "id": "albino_locus",
+      "name": "Albino",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal" },
+        "albino": { "id": "albino", "name": "Albino" }
+      }
+    },
+
+    "axanthic_vpi_locus": {
+      "id": "axanthic_vpi_locus",
+      "name": "Axanthic (VPI Line)",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":       { "id": "normal",       "name": "Normal"       },
+        "axanthic_vpi": { "id": "axanthic_vpi", "name": "Axanthic VPI" }
+      }
+    },
+
+    "lavender_albino_locus": {
+      "id": "lavender_albino_locus",
+      "name": "Lavender Albino",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":           { "id": "normal",           "name": "Normal"           },
+        "lavender_albino":  { "id": "lavender_albino",  "name": "Lavender Albino"  }
+      }
+    },
+
+    "genetic_stripe_locus": {
+      "id": "genetic_stripe_locus",
+      "name": "Genetic Stripe",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":          { "id": "normal",          "name": "Normal"          },
+        "genetic_stripe":  { "id": "genetic_stripe",  "name": "Genetic Stripe"  }
+      }
+    },
+
+    "desert_ghost_locus": {
+      "id": "desert_ghost_locus",
+      "name": "Desert Ghost",
+      "inheritance": "recessive",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":        { "id": "normal",        "name": "Normal"        },
+        "desert_ghost":  { "id": "desert_ghost",  "name": "Desert Ghost"  }
+      }
+    },
+
+    "pastel_locus": {
+      "id": "pastel_locus",
+      "name": "Pastel",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal",  "name": "Normal" },
+        "pastel": { "id": "pastel",  "name": "Pastel" }
+      }
+    },
+
+    "enchi_locus": {
+      "id": "enchi_locus",
+      "name": "Enchi",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal" },
+        "enchi":  { "id": "enchi",  "name": "Enchi"  }
+      }
+    },
+
+    "ghi_locus": {
+      "id": "ghi_locus",
+      "name": "GHI",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal" },
+        "ghi":    { "id": "ghi",    "name": "GHI"    }
+      }
+    },
+
+    "spider_complex": {
+      "id": "spider_complex",
+      "name": "Spider",
+      "inheritance": "dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal" },
+        "spider": {
+          "id": "spider",
+          "name": "Spider",
+          "defects": ["Neurological Wobble"]
+        }
+      }
+    },
+
+    "cinnamon_complex": {
+      "id": "cinnamon_complex",
+      "name": "Cinnamon Complex",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":       { "id": "normal",       "name": "Normal"       },
+        "cinnamon":     { "id": "cinnamon",     "name": "Cinnamon"     },
+        "black_pastel": { "id": "black_pastel", "name": "Black Pastel" }
+      }
+    },
+
+    "yellowbelly_complex": {
+      "id": "yellowbelly_complex",
+      "name": "Yellowbelly Complex",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":      { "id": "normal",      "name": "Normal"      },
+        "yellowbelly": { "id": "yellowbelly", "name": "Yellowbelly" },
+        "asphalt":     { "id": "asphalt",     "name": "Asphalt"     }
+      }
+    },
+
+    "black_head_complex": {
+      "id": "black_head_complex",
+      "name": "Black Head",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": false,
+      "alleles": {
+        "normal":     { "id": "normal",     "name": "Normal"     },
+        "black_head": { "id": "black_head", "name": "Black Head" }
+      }
+    },
+
+    "banana_locus": {
+      "id": "banana_locus",
+      "name": "Banana / Coral Glow",
+      "inheritance": "incomplete_dominant",
+      "isSexLinked": true,
+      "alleles": {
+        "normal": { "id": "normal", "name": "Normal"               },
+        "banana": { "id": "banana", "name": "Banana / Coral Glow"  }
+      }
+    }
+
+  },
+
+  "combos": [
+    {
+      "marketName": "Super Pastel",
+      "requiredGenotype": { "pastel_locus": ["pastel", "pastel"] }
+    },
+    {
+      "marketName": "Super Enchi",
+      "requiredGenotype": { "enchi_locus": ["enchi", "enchi"] }
+    },
+    {
+      "marketName": "Super GHI",
+      "requiredGenotype": { "ghi_locus": ["ghi", "ghi"] }
+    },
+    {
+      "marketName": "Super Cinnamon",
+      "requiredGenotype": { "cinnamon_complex": ["cinnamon", "cinnamon"] }
+    },
+    {
+      "marketName": "Super Black Pastel",
+      "requiredGenotype": { "cinnamon_complex": ["black_pastel", "black_pastel"] }
+    },
+    {
+      "marketName": "Pewter",
+      "requiredGenotype": { "cinnamon_complex": ["cinnamon", "black_pastel"] }
+    },
+    {
+      "marketName": "Ivory",
+      "requiredGenotype": { "yellowbelly_complex": ["yellowbelly", "yellowbelly"] }
+    },
+    {
+      "marketName": "Freeway",
+      "requiredGenotype": { "yellowbelly_complex": ["yellowbelly", "asphalt"] }
+    },
+    {
+      "marketName": "Super Black Head",
+      "requiredGenotype": { "black_head_complex": ["black_head", "black_head"] }
+    }
+  ],
+
+  "lethalCombos": [
+    {
+      "triggerGenotype": { "spider_complex": ["spider", "spider"] }
+    }
+  ],
+
+  "polygenicTags": ["Jungle", "Black Back"]
+}
