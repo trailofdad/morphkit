@@ -4,3 +4,6 @@ coverage/
 *.js.map
 *.d.ts.map
 .DS_Store
+.env
+.env.local
+.env.*.local
