@@ -1,5 +1,11 @@
 # morphkit
 
+[![CI](https://img.shields.io/github/actions/workflow/status/trailofdad/morphkit/ci.yml?label=CI&logo=github)](https://github.com/trailofdad/morphkit/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@trailofdad/morphkit?logo=npm&logoColor=white)](https://www.npmjs.com/package/@trailofdad/morphkit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](https://www.npmjs.com/package/@trailofdad/morphkit?activeTab=dependencies)
+
 A modern, open-source genetic calculation engine for ball python morph breeding. Given a sire and dam with known genotypes, morphkit computes all possible offspring genotypes, resolves visual phenotypes, calculates poss-het percentages, and flags lethality — client-side, with no backend required.
 
 ## Why morphkit?
