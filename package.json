@@ -1,5 +1,5 @@
 {
-  "name": "morphkit",
+  "name": "@trailofdad/morphkit",
   "version": "0.1.0",
   "description": "A modern, open-source, client-side genetic calculation engine for reptile breeding.",
   "main": "dist/index.js",
@@ -27,6 +27,9 @@
     "ball-python",
     "morphology"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^29.5.0",

@@ -15,7 +15,7 @@ Additionally, morphkit handles sex-linked morphs (Banana / Coral Glow), congenit
 ## Installation
 
 ```bash
-npm install morphkit
+npm install @trailofdad/morphkit
 ```
 
 Morphkit is a pure-computation library with no runtime dependencies. The trait dictionary is fetched from a CDN separately and passed into the engine, keeping the library bundle small and the data independently versioned.
@@ -27,7 +27,7 @@ Morphkit is a pure-computation library with no runtime dependencies. The trait d
 In production, pin to an immutable version tag. jsDelivr permanently caches versioned URLs, so there is no edge-propagation delay. Drive the version from an environment variable so a dictionary update is a config change, not a code deploy:
 
 ```ts
-import { syncDictionary } from 'morphkit';
+import { syncDictionary } from '@trailofdad/morphkit';
 
 const version = process.env.DICTIONARY_VERSION ?? '1.0.0';
 const dictionary = await syncDictionary(
@@ -51,8 +51,8 @@ const dictionary = await syncDictionary(
 The example below pairs two Het Clown animals and returns all possible offspring.
 
 ```ts
-import { calculateMorphsAsync, syncDictionary } from 'morphkit';
-import type { MorphkitCalculationInput } from 'morphkit';
+import { calculateMorphsAsync, syncDictionary } from '@trailofdad/morphkit';
+import type { MorphkitCalculationInput } from '@trailofdad/morphkit';
 
 const version = process.env.DICTIONARY_VERSION ?? '1.0.0';
 const dictionary = await syncDictionary(
