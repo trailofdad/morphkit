@@ -4,7 +4,7 @@ A modern, open-source genetic calculation engine for ball python morph breeding.
 
 ## Why morphkit?
 
-Most existing morph calculators treat every genetic trait as a simple binary flag. That breaks down in two important ways:
+Some morph calculators treat every genetic trait as a simple binary flag. That breaks down in two important ways:
 
 **Allelic complexes.** The Yellowbelly complex contains multiple distinct alleles at the same locus — Yellowbelly, Asphalt, and Ivory — where specific heterozygous pairings produce named market combos (e.g. Yellowbelly + Asphalt = **Freeway**). A calculator that models each morph as an independent true/false check will either miss these interactions entirely or require hard-coded special-casing per combo. Morphkit models alleles as competing occupants of a shared locus, so combo resolution falls out naturally from the genotype — no special cases needed.
 
