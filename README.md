@@ -6,8 +6,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](https://www.npmjs.com/package/@trailofdad/morphkit?activeTab=dependencies)
 
-A modern, open-source genetic calculation engine for ball python morph breeding. Looking for a ready-made UI? See **[morphkit-ui](https://github.com/trailofdad/morphkit-ui)** — a React component library that wraps morphkit with a complete breeder-facing interface.
+A modern, open-source genetic calculation engine for ball python morph breeding. 
 
+Looking for a ready-made UI? 
+See **[morphkit-ui](https://github.com/trailofdad/morphkit-ui)** — a React component library that wraps morphkit with a complete breeder-facing interface.
 --- Given a sire and dam with known genotypes, morphkit computes all possible offspring genotypes, resolves visual phenotypes, calculates poss-het percentages, and flags lethality — client-side, with no backend required.
 
 ## Why morphkit?
