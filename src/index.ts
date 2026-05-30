@@ -23,8 +23,9 @@ interface BrowserWorker {
 function spawnWorker(url: URL | string): BrowserWorker {
   const WorkerCtor = (globalThis as Record<string, unknown>)['Worker'] as new (
     url: URL | string,
+    options?: { type?: string },
   ) => BrowserWorker;
-  return new WorkerCtor(url);
+  return new WorkerCtor(url, { type: 'module' });
 }
 
 /**
