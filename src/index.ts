@@ -80,7 +80,11 @@ export function calculateMorphsAsync(
 
 export type {
   AggregatedOutcome,
+  AnimalInput,
+  AnimalSex,
+  CalculationMode,
   GenotypeOutcome,
+  LocusInput,
   MorphkitCalculationInput,
   MorphkitCalculationOutput,
   MorphkitDictionary,
