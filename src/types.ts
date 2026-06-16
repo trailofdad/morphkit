@@ -8,11 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Inheritance pattern for a locus — used by MK-2 via CDN Dictionary lookup. */
-export type InheritancePattern =
-  | 'recessive'
-  | 'dominant'
-  | 'co-dominant'
-  | 'sex-linked';
+export type InheritancePattern = 'recessive' | 'dominant' | 'co-dominant' | 'sex-linked';
 
 /** The sex of an animal, used for sex-linked locus calculations. */
 export type AnimalSex = 'male' | 'female';
@@ -149,7 +145,7 @@ export interface AggregatedOutcome {
   readonly genotype: GenotypeOutcome;
   /** The resolved visual phenotype name(s), e.g. ["Pastel", "Clown"]. */
   readonly phenotypeNames: readonly PhenotypeName[];
-  /** The combined combo name if one is registered, e.g. "Freeway". */
+  /** Registered combo name if matched; otherwise joined phenotypeNames. Undefined only for all-Normal outcomes. */
   readonly comboName?: PhenotypeName;
   /** Fractional probability, mirrored from the genotype for convenience. */
   readonly decimalProbability: number;
@@ -222,24 +218,24 @@ export class CartesianMatrixError extends Error {
 
 // --- DICTIONARY TYPES ---
 
-export type InheritanceType = "recessive" | "dominant" | "incomplete_dominant" | "polygenic";
+export type InheritanceType = 'recessive' | 'dominant' | 'incomplete_dominant' | 'polygenic';
 
 export interface AlleleDefinition {
-  id: string;             // e.g., "spider", "banana_malemaker"
-  name: string;           // e.g., "Spider", "Banana (Male Maker)"
-  defects?: string[];     // e.g., ["Neurological Wobble"]
+  id: string; // e.g., "spider", "banana_malemaker"
+  name: string; // e.g., "Spider", "Banana (Male Maker)"
+  defects?: string[]; // e.g., ["Neurological Wobble"]
 }
 
 export interface LocusDefinition {
-  id: string;                     // e.g., "yellowbelly_complex"
-  name: string;                   // e.g., "Yellowbelly Complex"
+  id: string; // e.g., "yellowbelly_complex"
+  name: string; // e.g., "Yellowbelly Complex"
   inheritance: InheritanceType;
-  isSexLinked: boolean;           // True for Banana/Coral Glow
+  isSexLinked: boolean; // True for Banana/Coral Glow
   alleles: Record<string, AlleleDefinition>; // O(1) lookup map of alleles at this locus
 }
 
 export interface ComboDefinition {
-  marketName: string;             // e.g., "Freeway"
+  marketName: string; // e.g., "Freeway"
   // Map of locusId to required alleles.
   // e.g., { "yellowbelly_complex": ["yellowbelly", "asphalt"] }
   requiredGenotype: Record<string, [string, string]>;
@@ -254,10 +250,10 @@ export interface LethalComboDefinition {
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
-  loci: Record<string, LocusDefinition>;           // O(1) Locus lookup
-  combos: ComboDefinition[];                       // Array of market combos to match against
-  lethalCombos: LethalComboDefinition[];           // Array of unviable genetic states
-  polygenicTags: string[];                         // Valid known polygenics (e.g., "Jungle")
+  loci: Record<string, LocusDefinition>; // O(1) Locus lookup
+  combos: ComboDefinition[]; // Array of market combos to match against
+  lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
+  polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }
 
 // ---------------------------------------------------------------------------

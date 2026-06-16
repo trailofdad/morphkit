@@ -32,10 +32,7 @@ export function normalizeInput(input: MorphkitCalculationInput): NormalizedBreed
 
 function requireSex(animal: AnimalInput, role: string): AnimalSex {
   if (animal.sex !== 'male' && animal.sex !== 'female') {
-    throw new SchemaValidationError(
-      `${role}.sex must be "male" or "female"`,
-      `${role}.sex`,
-    );
+    throw new SchemaValidationError(`${role}.sex must be "male" or "female"`, `${role}.sex`);
   }
   return animal.sex;
 }
@@ -56,10 +53,7 @@ function normalizeLocus(locus: LocusInput, path: string): NormalizedLocus {
     );
   }
   if (locus.alleles.length === 0) {
-    throw new SchemaValidationError(
-      `Locus at ${path} has no alleles; minimum is 1`,
-      path,
-    );
+    throw new SchemaValidationError(`Locus at ${path} has no alleles; minimum is 1`, path);
   }
   const alleles: [string, string] =
     locus.alleles.length === 2
