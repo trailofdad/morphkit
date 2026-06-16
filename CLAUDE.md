@@ -18,7 +18,7 @@ npx jest tests/engine.test.ts
 
 ## Architecture
 
-The pipeline has six layers with strict responsibility boundaries. Data flows left to right — no layer skips or reaches back.
+The pipeline has five layers with strict responsibility boundaries. Data flows left to right — no layer skips or reaches back.
 
 | Layer | Path | Role |
 |---|---|---|

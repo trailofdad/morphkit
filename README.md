@@ -163,12 +163,14 @@ Data flows through five layers with strict responsibility boundaries. No layer s
 
 `src/types.ts` is the single source of truth for all interfaces and error classes.
 
+For deeper architecture details (e.g. MK-1 lowercasing, locus symmetry, simple-tier contract), see [CLAUDE.md](./CLAUDE.md#architecture).
+
 ### Typed errors
 
 | Class | Thrown when |
 |---|---|
 | `SchemaValidationError` | Input payload fails schema validation (MK-1) |
-| `InvalidGenotypeError` | Locus array does not contain exactly 2 alleles |
+| `InvalidGenotypeError` | Locus array has more than 2 alleles (MK-1) |
 | `CartesianMatrixError` | Probability sum ≠ 1.0 |
 | `DictionaryNetworkError` | CDN fetch fails with no local cache to fall back to |
 
