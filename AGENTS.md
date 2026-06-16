@@ -54,12 +54,15 @@ Masked visual traits must still pass their defects to the `congenitalWarnings` s
 
 | Directory | Module | Responsibility |
 |---|---|---|
-| `src/validation/` | MK-1 | Takes implicit payloads and normalizes them to explicit 2-allele loci arrays. |
+| `src/validation/` | MK-1 | Normalizes payloads to explicit 2-allele loci arrays; lowercases locusIds/alleles; injects `["normal","normal"]` for loci present on only one parent. |
 | `src/engine/` | MK-2 | The Cartesian Punnett Matrix logic — pure math, no phenotype knowledge. |
 | `src/aggregator/` | MK-3 & MK-4 | Translates genotypes to phenotypes, computes Poss-Hets, flags lethality/defects. |
-| `src/worker/` | MK-5 | The Web Worker wrapper and event listeners. |
+| `src/worker/` | MK-5 | The Web Worker wrapper, event listeners, and synchronous pipeline orchestration. |
+| `src/network/` | MK-6 | `syncDictionary` — stale-while-revalidate CDN fetch with a 24-hour `localStorage` cache. |
 | `src/types.ts` | Shared | All TypeScript interfaces and error classes. |
 | `tests/` | — | Jest test suites, one per module. |
+
+> **Two input tiers.** The canonical *complex* input declares each locus + both alleles explicitly (RGI-accurate). A *simple* tier (morph-name list per parent, infer-and-warn on ambiguity) is an agreed but **not-yet-implemented** design — see `CLAUDE.md` → "Simple API name-resolution contract" and "Two inheritance enums" / "`_malemaker` suffix" for the load-bearing contracts.
 
 ---
 
@@ -69,9 +72,10 @@ Always throw specific, typed errors rather than generic ones:
 
 | Error Class | When to Throw |
 |---|---|
-| `SchemaValidationError` | Bad input payload (wrong shape, missing required fields). |
+| `SchemaValidationError` | Bad input payload (wrong shape, missing/invalid `sex`, or a locus with 0 alleles). |
 | `InvalidGenotypeError` | More than 2 alleles in a locus array. |
 | `CartesianMatrixError` | Probability sum does not equal `1.0`. |
+| `DictionaryNetworkError` | CDN fetch fails with no local cache to fall back to (MK-6). |
 
 All error classes are defined in `src/types.ts`.
 
