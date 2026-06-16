@@ -112,10 +112,10 @@ Each `AggregatedOutcome` contains:
 | Field | Description |
 |---|---|
 | `phenotypeNames` | Resolved visual trait names, e.g. `["Clown"]` |
-| `comboName` | Market combo name if one matched (e.g. `"Freeway"`), otherwise undefined |
+| `comboName` | Registered market combo name if one matched (e.g. `"Freeway"`); otherwise falls back to the joined `phenotypeNames`. Undefined only for all-Normal outcomes |
 | `percentageProbability` | Human-readable probability, e.g. `"25%"` |
 | `possibleHets` | Poss-het markers with `probability` and `isGuaranteed` for hidden recessives |
-| `isLethal` | `true` for embryonically lethal genotypes (e.g. homozygous Spider) |
+| `isLethal` | `true` for embryonically lethal genotypes (e.g. homozygous Spider). Lethal outcomes are **not** removed from the result and still count toward the 100% — percentages are not re-normalized after flagging |
 | `congenitalWarnings` | Defect labels from the dictionary (e.g. `"Neurological Wobble"`) |
 | `polygenics` | Deduplicated polygenics from both parents |
 
@@ -129,6 +129,25 @@ import MorphkitWorker from 'morphkit/worker/morphkit.worker?worker';
 ```
 
 A minimal reference React integration lives in [`example/`](./example). For a full-featured UI built on morphkit, see **[morphkit-ui](https://github.com/trailofdad/morphkit-ui)** — a React component library that wraps the engine with a complete breeder-facing interface.
+
+## API tiers: complex vs. simple
+
+Morphkit is architected around the **locus + allele** model (built with RGI / shed-test genetics in mind), so the canonical input is *complex*: you declare each locus and both of its alleles explicitly. Not every consumer needs that precision — many UIs only have a list of morph names per parent and just want outcomes and percentages back. To serve both, morphkit exposes two input tiers that resolve to the **same** pipeline.
+
+| Tier | Input shape | When to use |
+|---|---|---|
+| **Complex** (available today) | `genotype: [{ locusId, alleles: [a, b] }]` — every locus and both alleles stated explicitly | RGI-style apps that track genotypes precisely, including zygosity and het status |
+| **Simple** (planned) | `morphs: string[]` per parent — a flat list of morph names, no second allele required | Lightweight integrations that only know visual/named morphs and want outcomes + percentages |
+
+**The simple tier is a thin front-end, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract-planned) for the full contract). For example:
+
+- `"Clown"` (recessive) → `[clown, clown]` — a recessive is only visual when homozygous
+- `"Het Clown"` → `[clown, normal]`
+- `"Pastel"` (incomplete-dominant) → `[pastel, normal]`; `"Super Pastel"` → `[pastel, pastel]`
+- `"Freeway"` (a registered combo) → expands to the combo's `requiredGenotype`
+- an unknown name, or one that maps to more than one genotype, is returned with a `message` and excluded from the cross
+
+> The simple tier is a documented, agreed design and is **not yet implemented**. Until it ships, use the complex input shown in [Quick Start](#quick-start).
 
 ## Architecture
 
