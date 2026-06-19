@@ -653,3 +653,115 @@ describe('REQ-13: polygenic standard heuristic and diagnostic mode', () => {
     expect(phenotypes(dgaHomo, 'diagnostic')).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-10: epistatic visual masking (BEL super white, Black Head Spider)
+// ---------------------------------------------------------------------------
+
+describe('REQ-10: epistatic visual masking', () => {
+  const allele = (id: string, name: string, defects?: string[]) => ({ id, name, ...(defects ? { defects } : {}) });
+  const epiDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      blue_eyed_lucy_complex: {
+        id: 'blue_eyed_lucy_complex', name: 'BEL Complex',
+        inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), mojave: allele('mojave', 'Mojave'), lesser: allele('lesser', 'Lesser') },
+      },
+      pastel_locus: {
+        id: 'pastel_locus', name: 'Pastel', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), pastel: allele('pastel', 'Pastel') },
+      },
+      spider_complex: {
+        id: 'spider_complex', name: 'Spider', inheritance: 'dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), spider: allele('spider', 'Spider', ['Neurological Wobble']) },
+      },
+      black_head_complex: {
+        id: 'black_head_complex', name: 'Black Head', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), black_head: allele('black_head', 'Black Head') },
+      },
+    },
+    epistasisRules: [
+      {
+        name: 'Blue-Eyed Leucistic',
+        conditions: [{ locusId: 'blue_eyed_lucy_complex', state: 'homozygous' }],
+        suppressAll: true,
+        label: 'Blue-Eyed Leucistic',
+      },
+      {
+        name: 'Black Head Spider',
+        conditions: [
+          { locusId: 'black_head_complex', state: 'present', allele: 'black_head' },
+          { locusId: 'spider_complex', state: 'present', allele: 'spider' },
+        ],
+        suppressLoci: ['black_head_complex', 'spider_complex'],
+        label: 'Black Head Spider (visually near-normal)',
+      },
+    ],
+  };
+
+  function aggregate(loci: GenotypeOutcome['loci']): AggregatedOutcome {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), epiDict)[0];
+  }
+
+  it('BEL-super masks an unlinked Pastel → reports the solid-white phenotype only', () => {
+    const out = aggregate([
+      { locusId: 'blue_eyed_lucy_complex', alleles: ['mojave', 'lesser'] }, // compound BEL → white
+      { locusId: 'pastel_locus', alleles: ['pastel', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toEqual(['Blue-Eyed Leucistic']);
+    expect(out.phenotypeNames).not.toContain('Pastel');
+    // Underlying genotype is retained for downstream crosses.
+    expect(out.genotype.loci.find((l) => l.locusId === 'pastel_locus')?.alleles).toEqual([
+      'pastel',
+      'normal',
+    ]);
+  });
+
+  it('Black Head Spider reads visually near-normal while retaining genotype + wobble', () => {
+    const out = aggregate([
+      { locusId: 'black_head_complex', alleles: ['black_head', 'normal'] },
+      { locusId: 'spider_complex', alleles: ['spider', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toEqual(['Black Head Spider (visually near-normal)']);
+    expect(out.phenotypeNames).not.toContain('Spider');
+    expect(out.phenotypeNames).not.toContain('Black Head');
+    // Congenital warning is independent of visual masking.
+    expect(out.congenitalWarnings).toContain('Neurological Wobble');
+    expect(out.genotype.loci).toHaveLength(2);
+  });
+
+  it('masks only the suppressed loci — an unlinked Pastel still shows alongside the label', () => {
+    const out = aggregate([
+      { locusId: 'black_head_complex', alleles: ['black_head', 'normal'] },
+      { locusId: 'spider_complex', alleles: ['spider', 'normal'] },
+      { locusId: 'pastel_locus', alleles: ['pastel', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toContain('Pastel');
+    expect(out.phenotypeNames).toContain('Black Head Spider (visually near-normal)');
+    expect(out.phenotypeNames).not.toContain('Spider');
+  });
+
+  it('negative control: a non-epistatic genotype is unchanged', () => {
+    expect(aggregate([{ locusId: 'pastel_locus', alleles: ['pastel', 'normal'] }]).phenotypeNames).toEqual([
+      'Pastel',
+    ]);
+  });
+
+  it('negative control: Black Head WITHOUT Spider is not masked', () => {
+    expect(
+      aggregate([{ locusId: 'black_head_complex', alleles: ['black_head', 'normal'] }]).phenotypeNames,
+    ).toEqual(['Black Head']);
+  });
+
+  it('negative control: a single-allele BEL (not homozygous) does not trigger the white override', () => {
+    expect(
+      aggregate([{ locusId: 'blue_eyed_lucy_complex', alleles: ['mojave', 'normal'] }]).phenotypeNames,
+    ).toEqual(['Mojave']);
+  });
+});

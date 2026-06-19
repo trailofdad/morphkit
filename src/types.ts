@@ -368,6 +368,37 @@ export interface PolygenicGroup {
   visualLabel: string; // emitted phenotype when the gate opens, e.g. "Visual Desert Ghost"
 }
 
+/** One locus condition in an epistasis rule. */
+export interface EpistasisLocusCondition {
+  locusId: string;
+  /**
+   * `'present'` matches ≥1 copy of `allele` (or any mutant allele if `allele` is
+   * omitted); `'homozygous'` matches when both alleles are non-normal (the super /
+   * compound state), restricted to `allele` when given.
+   */
+  state: 'present' | 'homozygous';
+  allele?: string;
+}
+
+/**
+ * An epistatic visual-masking rule: when every condition holds, the named visual
+ * traits from `suppressLoci` (or all traits, if `suppressAll`) are removed and
+ * `label` is emitted instead. Only the **visual** phenotype is affected — the
+ * underlying genotype and congenital warnings are untouched, so downstream-
+ * generation crosses and safety flags stay correct. Examples: a BEL-super solid-
+ * white masking an unlinked Pastel; a Black Head Spider compound reading visually
+ * near-normal.
+ */
+export interface EpistasisRule {
+  name: string; // e.g., "Black Head Spider"
+  conditions: EpistasisLocusCondition[];
+  /** Loci whose visual names are removed when the rule fires. Defaults to the condition loci. */
+  suppressLoci?: string[];
+  /** When true, removes ALL visual names (a solid-white BEL masks everything). */
+  suppressAll?: boolean;
+  label: string; // the phenotype emitted in place of the masked traits
+}
+
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
@@ -375,6 +406,7 @@ export interface MorphkitDictionary {
   combos: ComboDefinition[]; // Array of market combos to match against
   lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
   defectCombos?: DefectComboDefinition[]; // Combination-triggered congenital defects
+  epistasisRules?: EpistasisRule[]; // Visual-masking overrides (BEL white, Black Head Spider)
   polygenicGroups?: PolygenicGroup[]; // Diagnostic-mode polygenic gates (e.g. Desert Ghost)
   polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }

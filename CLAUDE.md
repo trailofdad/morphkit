@@ -89,6 +89,7 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 - **Sex-linked loci** (e.g. Banana/Coral Glow): abandon independent assortment; offspring sex comes from the male's X/Y contribution, and the mutant follows whichever sex chromosome carries it (see the XX/XY contract above). Requires `sex` to be present on both animals in the input.
 - **Embryonic lethality** (e.g. Homozygous Spider, Super Champagne): MK-2 calculates normally; MK-3/4 sets `isLethal: true` on the `AggregatedOutcome`.
 - **Congenital defects / epistasis** (e.g. Black Head Spider): the phenotype label reflects the visual morph, but `congenitalWarnings` must still contain the underlying defect (e.g. `"Neurological Wobble"`).
+- **Epistatic visual masking** (`dictionary.epistasisRules`): after per-locus visual collection, the aggregator applies masking rules — a BEL-super (homozygous/compound `blue_eyed_lucy_complex`) reports the solid-white phenotype and suppresses unlinked visuals (`suppressAll`); a Black Head Spider compound suppresses both its loci's visuals and reads "near-normal" (`suppressLoci`). Masking rewrites **only** `phenotypeNames` — the genotype and `congenitalWarnings` are untouched, so downstream crosses and the wobble flag stay correct.
 
 ## Simple API name-resolution contract
 

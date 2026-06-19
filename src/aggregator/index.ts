@@ -1,6 +1,7 @@
 import {
   AggregatedOutcome,
   CalculationMode,
+  EpistasisRule,
   GenotypeOutcome,
   MorphkitDictionary,
   NormalizedBreedingPair,
@@ -42,31 +43,40 @@ function isCarrierAtLocus(alleles: readonly [string, string]): boolean {
 // are the visual (not a "super"); a dominant super is indistinguishable by name.
 const SUPER_PREFIX = 'Super ';
 
+/** A resolved visual trait tagged with the locus it came from (for epistatic masking). */
+interface VisualTrait {
+  readonly locusId: string;
+  readonly name: string;
+}
+
 function collectVisualTraits(
   loci: readonly NormalizedLocus[],
   dictionary: MorphkitDictionary,
   mode: CalculationMode,
-): string[] {
+): VisualTrait[] {
   // REQ-13: in diagnostic mode a polygenic group's member loci (DGa/DGb/DGc) do
   // not express on their own — they are gated below on the group's causal locus.
   const diagnostic = mode === 'diagnostic';
   const groups = dictionary.polygenicGroups ?? [];
   const gatedLoci = diagnostic ? new Set(groups.flatMap((g) => g.loci)) : new Set<string>();
 
-  const traits: string[] = [];
+  const traits: VisualTrait[] = [];
   for (const locus of loci) {
     if (gatedLoci.has(locus.locusId)) continue;
     const locusDef = dictionary.loci[locus.locusId];
     if (!locusDef || !isVisualAtLocus(locus.alleles, locusDef.inheritance)) continue;
     const [a, b] = locus.alleles;
     if (locusDef.inheritance === 'incomplete_dominant' && a === b && !isNormal(a)) {
-      traits.push(`${SUPER_PREFIX}${locusDef.alleles[a]?.name ?? a}`);
+      traits.push({
+        locusId: locus.locusId,
+        name: `${SUPER_PREFIX}${locusDef.alleles[a]?.name ?? a}`,
+      });
       continue;
     }
     // Deduplicate mutant alleles (handles homozygous recessive where both alleles are identical)
     const mutants = [...new Set(locus.alleles.filter((x) => !isNormal(x)))];
     for (const alleleId of mutants) {
-      traits.push(locusDef.alleles[alleleId]?.name ?? alleleId);
+      traits.push({ locusId: locus.locusId, name: locusDef.alleles[alleleId]?.name ?? alleleId });
     }
   }
 
@@ -77,10 +87,53 @@ function collectVisualTraits(
     const byId = indexLoci(loci);
     for (const group of groups) {
       const causal = byId.get(group.causalLocus);
-      if (causal && isHomozygousMutant(causal.alleles)) traits.push(group.visualLabel);
+      if (causal && isHomozygousMutant(causal.alleles)) {
+        traits.push({ locusId: group.causalLocus, name: group.visualLabel });
+      }
     }
   }
   return traits;
+}
+
+/**
+ * REQ-10: epistatic visual masking. When an epistasis rule's conditions all hold,
+ * the named traits from its `suppressLoci` (or every trait, if `suppressAll`) are
+ * removed and the rule's `label` is emitted instead. Only the visual list is
+ * touched — genotype and congenital warnings are untouched, preserving downstream
+ * crosses and safety flags. Rules apply in dictionary order.
+ */
+function applyEpistasis(
+  traits: VisualTrait[],
+  lociById: Map<string, NormalizedLocus>,
+  dictionary: MorphkitDictionary,
+): VisualTrait[] {
+  let result = traits;
+  for (const rule of dictionary.epistasisRules ?? []) {
+    if (!epistasisMatches(rule, lociById)) continue;
+    if (rule.suppressAll) {
+      result = [];
+    } else {
+      const suppress = new Set(rule.suppressLoci ?? rule.conditions.map((c) => c.locusId));
+      result = result.filter((t) => !suppress.has(t.locusId));
+    }
+    result = [...result, { locusId: rule.conditions[0]?.locusId ?? '', name: rule.label }];
+  }
+  return result;
+}
+
+function epistasisMatches(rule: EpistasisRule, lociById: Map<string, NormalizedLocus>): boolean {
+  return rule.conditions.every((cond) => {
+    const locus = lociById.get(cond.locusId);
+    if (!locus) return false;
+    const [a, b] = locus.alleles;
+    if (cond.state === 'homozygous') {
+      if (isNormal(a) || isNormal(b)) return false;
+      return cond.allele ? a === cond.allele && b === cond.allele : true;
+    }
+    // 'present': at least one copy of the (optional) allele.
+    if (cond.allele) return a === cond.allele || b === cond.allele;
+    return !isNormal(a) || !isNormal(b);
+  });
 }
 
 /** Indexes an outcome's loci by id for O(1) lookup across combo/lethal/defect scans. */
@@ -199,7 +252,9 @@ export function aggregateOutcomes(
 
   const aggregated = outcomes.map((outcome): AggregatedOutcome => {
     const lociById = indexLoci(outcome.loci);
-    const phenotypeNames = collectVisualTraits(outcome.loci, dictionary, pair.calculationMode);
+    const visualTraits = collectVisualTraits(outcome.loci, dictionary, pair.calculationMode);
+    // REQ-10: apply epistatic visual masking after per-locus collection.
+    const phenotypeNames = applyEpistasis(visualTraits, lociById, dictionary).map((t) => t.name);
     const possibleHets: PossibleHet[] = [];
 
     for (const locus of outcome.loci) {
