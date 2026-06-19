@@ -24,9 +24,11 @@ interface PartialOutcome {
  * MK-2: Executes the Cartesian Punnett Matrix over all loci in the
  * normalized breeding pair and returns deduplicated GenotypeOutcome[].
  *
- * Sex-linked loci (flagged in `dictionary`) bypass independent assortment:
- * sire alleles tagged `_MaleMaker` route exclusively to male offspring;
- * all other sire alleles on a sex-linked locus route to female offspring.
+ * Sex-linked loci (flagged in `dictionary`) bypass independent assortment and
+ * are modeled on the XX/XY sex-determination system: offspring sex is set by
+ * which sex chromosome the heterogametic (male) parent contributes — Y → son,
+ * X → daughter — independent of the morph. A mutant allele then reaches an
+ * offspring via whichever sex chromosome (from either parent) carries it.
  *
  * Throws CartesianMatrixError if the sum of decimalProbability ≠ 1.0.
  */
@@ -40,7 +42,9 @@ export function computePunnettMatrix(
   for (const { locusId } of pair.sire.genotype) {
     const sireLocus = requireLocus(pair.sire.genotype, locusId);
     const damLocus = requireLocus(pair.dam.genotype, locusId);
-    const matrix = buildLocusMatrix(sireLocus, damLocus, isSexLinked(locusId, dictionary));
+    const matrix = isSexLinked(locusId, dictionary)
+      ? buildSexLinkedMatrix(sireLocus, damLocus, pair.sire.sex)
+      : buildAutosomalMatrix(sireLocus, damLocus);
     combined = crossProduct(combined, matrix);
   }
 
@@ -81,31 +85,71 @@ export function validateHardyWeinberg(outcomes: GenotypeOutcome[]): void {
 // Per-locus 2×2 matrix
 // ---------------------------------------------------------------------------
 
-function buildLocusMatrix(
+/** Autosomal locus: full 4-way Cartesian product of the two parents' alleles. */
+function buildAutosomalMatrix(
   sireLocus: NormalizedLocus,
   damLocus: NormalizedLocus,
-  sexLinked: boolean,
 ): PartialOutcome[] {
   const outcomes: PartialOutcome[] = [];
-
   for (const sireAllele of sireLocus.alleles) {
-    // For sex-linked loci, alleles on the sire's Y chromosome (tagged
-    // _MaleMaker) route to male offspring; all others are X-linked → female.
-    const sex: AnimalSex | undefined = sexLinked
-      ? sireAllele.endsWith('_malemaker')
-        ? 'male'
-        : 'female'
-      : undefined;
-
     for (const damAllele of damLocus.alleles) {
       outcomes.push({
         loci: [{ locusId: sireLocus.locusId, alleles: sortPair(sireAllele, damAllele) }],
-        sex,
       });
     }
   }
-
   return outcomes; // always 4 raw outcomes per locus
+}
+
+/**
+ * Sex-linked locus on the XX(♀)/XY(♂) system. The male contributes either his
+ * X (→ daughter) or his Y (→ son); the female always contributes one of her two
+ * X chromosomes. This yields 4 equally-likely outcomes (2 sons, 2 daughters) and
+ * correctly handles Male-Maker, Female-Maker, het-female and Super states — a
+ * mutant reaches an offspring through whichever sex chromosome carries it.
+ */
+function buildSexLinkedMatrix(
+  sireLocus: NormalizedLocus,
+  damLocus: NormalizedLocus,
+  sireSex: AnimalSex,
+): PartialOutcome[] {
+  // The heterogametic (XY) parent is the male; the homogametic (XX) parent is
+  // the female. Identify by declared sex rather than the sire/dam slot.
+  const maleLocus = sireSex === 'male' ? sireLocus : damLocus;
+  const femaleLocus = sireSex === 'male' ? damLocus : sireLocus;
+  const { xAllele, yAllele } = resolveMaleChromosomes(maleLocus);
+  const locusId = sireLocus.locusId;
+
+  const outcomes: PartialOutcome[] = [];
+  for (const femaleX of femaleLocus.alleles) {
+    // Son: Y from the male parent + an X from the female parent.
+    outcomes.push({ loci: [{ locusId, alleles: sortPair(yAllele, femaleX) }], sex: 'male' });
+    // Daughter: X from the male parent + an X from the female parent.
+    outcomes.push({ loci: [{ locusId, alleles: sortPair(xAllele, femaleX) }], sex: 'female' });
+  }
+  return outcomes; // always 4 raw outcomes per locus
+}
+
+/**
+ * Resolves which allele rides the male's X vs Y chromosome. Uses the explicit
+ * `sexChromosomes` annotation when present; otherwise a mutant allele defaults to
+ * the Y (Male-Maker), the iconic Banana case. For a wild-type or homozygous male
+ * the assignment is symmetric, so the default is harmless.
+ */
+function resolveMaleChromosomes(locus: NormalizedLocus): {
+  xAllele: string;
+  yAllele: string;
+} {
+  const [a, b] = locus.alleles;
+  if (locus.sexChromosomes) {
+    const [ca] = locus.sexChromosomes;
+    return ca === 'X' ? { xAllele: a, yAllele: b } : { xAllele: b, yAllele: a };
+  }
+  const aMutant = a !== 'normal';
+  const bMutant = b !== 'normal';
+  if (aMutant && !bMutant) return { xAllele: b, yAllele: a };
+  if (bMutant && !aMutant) return { xAllele: a, yAllele: b };
+  return { xAllele: a, yAllele: b };
 }
 
 // ---------------------------------------------------------------------------

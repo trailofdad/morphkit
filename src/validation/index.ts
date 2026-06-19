@@ -139,7 +139,36 @@ function normalizeLocus(
       ? [resolve(locus.alleles[0]), resolve(locus.alleles[1])]
       : [resolve(locus.alleles[0]), 'normal'];
 
-  return { locusId, alleles };
+  const sexChromosomes = normalizeSexChromosomes(locus, path);
+  return sexChromosomes ? { locusId, alleles, sexChromosomes } : { locusId, alleles };
+}
+
+/**
+ * Aligns an input locus's `sexChromosomes` to the normalized 2-allele form. A
+ * single-allele input expanded with `normal` puts the injected `normal` on the
+ * opposite chromosome from the one provided. Returns undefined when the input
+ * carries no sex-chromosome annotation (the autosomal / female case).
+ */
+function normalizeSexChromosomes(
+  locus: LocusInput,
+  path: string,
+): ['X' | 'Y', 'X' | 'Y'] | undefined {
+  const raw = locus.sexChromosomes;
+  if (!raw || raw.length === 0) return undefined;
+
+  const upper = raw.map((c) => String(c).toUpperCase());
+  for (const c of upper) {
+    if (c !== 'X' && c !== 'Y') {
+      throw new SchemaValidationError(`sexChromosomes at ${path} must each be "X" or "Y"`, path);
+    }
+  }
+
+  if (upper.length === 2) return [upper[0] as 'X' | 'Y', upper[1] as 'X' | 'Y'];
+  if (upper.length === 1) {
+    const provided = upper[0] as 'X' | 'Y';
+    return [provided, provided === 'X' ? 'Y' : 'X'];
+  }
+  throw new SchemaValidationError(`sexChromosomes at ${path} must have one entry per allele`, path);
 }
 
 function ensureLocusSymmetry(

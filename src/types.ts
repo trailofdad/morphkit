@@ -8,11 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Inheritance pattern for a locus — used by MK-2 via CDN Dictionary lookup. */
-export type InheritancePattern =
-  | 'recessive'
-  | 'dominant'
-  | 'co-dominant'
-  | 'sex-linked';
+export type InheritancePattern = 'recessive' | 'dominant' | 'co-dominant' | 'sex-linked';
 
 /** The sex of an animal, used for sex-linked locus calculations. */
 export type AnimalSex = 'male' | 'female';
@@ -48,6 +44,15 @@ export type CdnDictionary = readonly LocusDictionaryEntry[];
 export interface LocusInput {
   readonly locusId: string;
   readonly alleles: readonly string[];
+  /**
+   * Sex-linked loci only: which sex chromosome each entry in `alleles` rides, in
+   * the same order. Meaningful on the heterogametic (male) parent — e.g. alleles
+   * `['banana','normal']` with `['Y','X']` is a Male-Maker (banana on the Y);
+   * `['X','Y']` is a Female-Maker (banana on the X). When omitted, a male's
+   * mutant allele defaults to the Y (Male-Maker). Ignored for autosomal loci and
+   * for females (both alleles ride an X).
+   */
+  readonly sexChromosomes?: readonly ('X' | 'Y')[];
 }
 
 /** Represents one animal in the breeding pair as provided by the caller. */
@@ -83,6 +88,13 @@ export interface NormalizedLocus {
   readonly locusId: string;
   /** Exactly 2 alleles — e.g., ["Clown", "Normal"] or ["Clown", "Clown"]. */
   readonly alleles: [string, string];
+  /**
+   * Sex chromosome each allele rides, same order as `alleles`. Carried from a
+   * sex-linked input on the heterogametic parent; the engine uses it to route
+   * the Y-borne allele to sons and the X-borne allele to daughters. Absent on
+   * autosomal loci and on the homogametic (female) parent.
+   */
+  readonly sexChromosomes?: readonly ['X' | 'Y', 'X' | 'Y'];
 }
 
 /** One animal after MK-1 normalization. */
@@ -226,12 +238,12 @@ export class CartesianMatrixError extends Error {
 
 // --- DICTIONARY TYPES ---
 
-export type InheritanceType = "recessive" | "dominant" | "incomplete_dominant" | "polygenic";
+export type InheritanceType = 'recessive' | 'dominant' | 'incomplete_dominant' | 'polygenic';
 
 export interface AlleleDefinition {
-  id: string;             // e.g., "spider", "banana_malemaker"
-  name: string;           // e.g., "Spider", "Banana (Male Maker)"
-  defects?: string[];     // e.g., ["Neurological Wobble"]
+  id: string; // e.g., "spider", "banana_malemaker"
+  name: string; // e.g., "Spider", "Banana (Male Maker)"
+  defects?: string[]; // e.g., ["Neurological Wobble"]
   /** Community synonyms / abbreviations for this allele, e.g. ["HGW"]. */
   aliases?: string[];
   /** Very short labels for tub tags or printing, e.g. ["Past"]. */
@@ -244,15 +256,15 @@ export interface AlleleDefinition {
 }
 
 export interface LocusDefinition {
-  id: string;                     // e.g., "yellowbelly_complex"
-  name: string;                   // e.g., "Yellowbelly Complex"
+  id: string; // e.g., "yellowbelly_complex"
+  name: string; // e.g., "Yellowbelly Complex"
   inheritance: InheritanceType;
-  isSexLinked: boolean;           // True for Banana/Coral Glow
+  isSexLinked: boolean; // True for Banana/Coral Glow
   alleles: Record<string, AlleleDefinition>; // O(1) lookup map of alleles at this locus
 }
 
 export interface ComboDefinition {
-  marketName: string;             // e.g., "Freeway"
+  marketName: string; // e.g., "Freeway"
   /** Alternative community names for this combo. */
   aliases?: string[];
   /** Very short labels for tub tags or printing. */
@@ -271,10 +283,10 @@ export interface LethalComboDefinition {
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
-  loci: Record<string, LocusDefinition>;           // O(1) Locus lookup
-  combos: ComboDefinition[];                       // Array of market combos to match against
-  lethalCombos: LethalComboDefinition[];           // Array of unviable genetic states
-  polygenicTags: string[];                         // Valid known polygenics (e.g., "Jungle")
+  loci: Record<string, LocusDefinition>; // O(1) Locus lookup
+  combos: ComboDefinition[]; // Array of market combos to match against
+  lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
+  polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }
 
 // ---------------------------------------------------------------------------

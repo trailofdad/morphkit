@@ -89,75 +89,135 @@ describe('AC-1: het clown sire × het clown dam', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-2 — Sex-linked Male-Maker sire × Normal dam (REQ-2.2)
+// AC-2 — Sex-linked inheritance on the XX/XY model (Banana / Coral Glow)
 // ---------------------------------------------------------------------------
 
-describe('AC-2: banana_malemaker sire × normal dam (sex-linked)', () => {
+// Probability that an offspring of the given sex carries `banana` at all.
+function bananaProbBySex(outcomes: GenotypeOutcome[], sex: 'male' | 'female'): number {
+  return outcomes
+    .filter((o) => o.sex === sex)
+    .reduce((sum, o) => {
+      const locus = o.loci.find((l) => l.locusId === 'banana_locus');
+      return sum + (locus?.alleles.includes('banana') ? o.decimalProbability : 0);
+    }, 0);
+}
+
+function sexTotal(outcomes: GenotypeOutcome[], sex: 'male' | 'female'): number {
+  return outcomes.filter((o) => o.sex === sex).reduce((s, o) => s + o.decimalProbability, 0);
+}
+
+describe('AC-2a: Male-Maker banana sire × normal dam (default: mutant on the Y)', () => {
   let outcomes: GenotypeOutcome[];
-
   beforeAll(() => {
-    const pair = makePair({
-      sire: {
-        id: 'sire',
-        sex: 'male',
-        genotype: [{ locusId: 'banana_locus', alleles: ['banana_malemaker', 'normal'] }],
-        polygenics: [],
-      },
-      dam: {
-        id: 'dam',
-        sex: 'female',
-        genotype: [{ locusId: 'banana_locus', alleles: ['normal', 'normal'] }],
-        polygenics: [],
-      },
-    });
-    outcomes = computePunnettMatrix(pair, BANANA_DICT);
+    outcomes = computePunnettMatrix(
+      makePair({
+        sire: {
+          id: 'sire', sex: 'male',
+          genotype: [{ locusId: 'banana_locus', alleles: ['banana', 'normal'] }],
+          polygenics: [],
+        },
+        dam: {
+          id: 'dam', sex: 'female',
+          genotype: [{ locusId: 'banana_locus', alleles: ['normal', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      BANANA_DICT,
+    );
   });
 
-  it('produces exactly 2 unique genotypes (one per sex)', () => {
-    expect(outcomes).toHaveLength(2);
+  it('100% of males are banana, 0% of females are banana', () => {
+    expect(bananaProbBySex(outcomes, 'male')).toBe(sexTotal(outcomes, 'male'));
+    expect(bananaProbBySex(outcomes, 'female')).toBe(0);
   });
 
-  it('100% of male offspring carry banana_malemaker', () => {
-    const maleOutcomes = outcomes.filter((o) => o.sex === 'male');
-    expect(maleOutcomes.length).toBeGreaterThan(0);
-    const maleBananaProbability = maleOutcomes.reduce((sum, o) => {
-      const locus = o.loci.find((l) => l.locusId === 'banana_locus');
-      const hasBanana = locus?.alleles.includes('banana_malemaker') ?? false;
-      return sum + (hasBanana ? o.decimalProbability : 0);
-    }, 0);
-    const totalMaleProbability = maleOutcomes.reduce((sum, o) => sum + o.decimalProbability, 0);
-    expect(maleBananaProbability).toBe(totalMaleProbability);
+  it('keeps a 1:1 sex ratio and sums to 1.0', () => {
+    expect(sexTotal(outcomes, 'male')).toBe(0.5);
+    expect(sexTotal(outcomes, 'female')).toBe(0.5);
+    expect(outcomes.reduce((s, o) => s + o.decimalProbability, 0)).toBe(1.0);
+  });
+});
+
+describe('AC-2b: normal male × het female banana — the all-female-clutch bug fix', () => {
+  let outcomes: GenotypeOutcome[];
+  beforeAll(() => {
+    outcomes = computePunnettMatrix(
+      makePair({
+        sire: {
+          id: 'sire', sex: 'male',
+          genotype: [{ locusId: 'banana_locus', alleles: ['normal', 'normal'] }],
+          polygenics: [],
+        },
+        dam: {
+          id: 'dam', sex: 'female',
+          genotype: [{ locusId: 'banana_locus', alleles: ['banana', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      BANANA_DICT,
+    );
   });
 
-  it('0% of female offspring carry banana_malemaker', () => {
-    const femaleOutcomes = outcomes.filter((o) => o.sex === 'female');
-    expect(femaleOutcomes.length).toBeGreaterThan(0);
-    const femaleBananaProbability = femaleOutcomes.reduce((sum, o) => {
-      const locus = o.loci.find((l) => l.locusId === 'banana_locus');
-      const hasBanana = locus?.alleles.includes('banana_malemaker') ?? false;
-      return sum + (hasBanana ? o.decimalProbability : 0);
-    }, 0);
-    expect(femaleBananaProbability).toBe(0);
+  it('produces a 1:1 sex ratio (not 100% female)', () => {
+    expect(sexTotal(outcomes, 'male')).toBe(0.5);
+    expect(sexTotal(outcomes, 'female')).toBe(0.5);
   });
 
-  it('50% of offspring are male, 50% are female', () => {
-    const maleTotal = outcomes
-      .filter((o) => o.sex === 'male')
-      .reduce((sum, o) => sum + o.decimalProbability, 0);
-    const femaleTotal = outcomes
-      .filter((o) => o.sex === 'female')
-      .reduce((sum, o) => sum + o.decimalProbability, 0);
-    expect(maleTotal).toBe(0.5);
-    expect(femaleTotal).toBe(0.5);
+  it('throws ~25% banana of each sex (dam passes her mutant X to half of all offspring)', () => {
+    expect(bananaProbBySex(outcomes, 'male')).toBe(0.25);
+    expect(bananaProbBySex(outcomes, 'female')).toBe(0.25);
+  });
+});
+
+describe('AC-2c: Female-Maker banana sire (mutant on the X) × normal dam', () => {
+  let outcomes: GenotypeOutcome[];
+  beforeAll(() => {
+    outcomes = computePunnettMatrix(
+      makePair({
+        sire: {
+          id: 'sire', sex: 'male',
+          genotype: [
+            { locusId: 'banana_locus', alleles: ['banana', 'normal'], sexChromosomes: ['X', 'Y'] },
+          ],
+          polygenics: [],
+        },
+        dam: {
+          id: 'dam', sex: 'female',
+          genotype: [{ locusId: 'banana_locus', alleles: ['normal', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      BANANA_DICT,
+    );
   });
 
-  it('all outcomes have an explicit sex assignment', () => {
-    expect(outcomes.every((o) => o.sex !== undefined)).toBe(true);
+  it('100% of females are banana, 0% of males are banana (mirror of the male-maker)', () => {
+    expect(bananaProbBySex(outcomes, 'female')).toBe(sexTotal(outcomes, 'female'));
+    expect(bananaProbBySex(outcomes, 'male')).toBe(0);
   });
+});
 
-  it('probabilities sum to exactly 1.0', () => {
-    const sum = outcomes.reduce((acc, o) => acc + o.decimalProbability, 0);
-    expect(sum).toBe(1.0);
+describe('AC-2d: Super Banana male (homozygous) × normal dam', () => {
+  it('produces 100% banana offspring across a 1:1 sex ratio', () => {
+    const outcomes = computePunnettMatrix(
+      makePair({
+        sire: {
+          id: 'sire', sex: 'male',
+          genotype: [{ locusId: 'banana_locus', alleles: ['banana', 'banana'] }],
+          polygenics: [],
+        },
+        dam: {
+          id: 'dam', sex: 'female',
+          genotype: [{ locusId: 'banana_locus', alleles: ['normal', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      BANANA_DICT,
+    );
+    const bananaTotal = bananaProbBySex(outcomes, 'male') + bananaProbBySex(outcomes, 'female');
+    expect(bananaTotal).toBe(1.0);
+    expect(sexTotal(outcomes, 'male')).toBe(0.5);
+    expect(sexTotal(outcomes, 'female')).toBe(0.5);
   });
 });
 

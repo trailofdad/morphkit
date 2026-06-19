@@ -510,3 +510,74 @@ describe('dictionary-aware MK-1 (aliases + validation)', () => {
     expect(locus?.alleles).toEqual(['whatever', 'normal']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-5 — sex-linked sexChromosomes normalization (MK-1)
+// ---------------------------------------------------------------------------
+
+describe('sexChromosomes normalization', () => {
+  it('carries a two-entry annotation through unchanged (uppercased)', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [
+            {
+              locusId: 'banana_locus',
+              alleles: ['banana', 'normal'],
+              sexChromosomes: ['x', 'y'] as unknown as ('X' | 'Y')[],
+            },
+          ],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'banana_locus');
+    expect(locus?.sexChromosomes).toEqual(['X', 'Y']);
+  });
+
+  it('expands a single-allele annotation, putting the injected normal on the opposite chromosome', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'banana_locus', alleles: ['banana'], sexChromosomes: ['Y'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'banana_locus');
+    expect(locus?.alleles).toEqual(['banana', 'normal']);
+    expect(locus?.sexChromosomes).toEqual(['Y', 'X']);
+  });
+
+  it('throws SchemaValidationError for an invalid chromosome value', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [
+              { locusId: 'banana_locus', alleles: ['banana', 'normal'], sexChromosomes: ['Z', 'X'] as ('X' | 'Y')[] },
+            ],
+            polygenics: [],
+          },
+        }),
+      ),
+    ).toThrow(SchemaValidationError);
+  });
+
+  it('leaves autosomal loci without a sexChromosomes field', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'clown_locus');
+    expect(locus?.sexChromosomes).toBeUndefined();
+  });
+});

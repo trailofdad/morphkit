@@ -60,7 +60,7 @@ These are enforced by the compiler and linter and will fail CI if violated:
 
 If your change touches inheritance math, be aware of the three classes of edge cases the engine must handle:
 
-- **Sex-linked loci** (e.g. Banana / Coral Glow): independent assortment does not apply; the mutated allele maps to sex based on the sire's heterogametic passing. `sex` must be present on both animals in the input.
+- **Sex-linked loci** (e.g. Banana / Coral Glow): independent assortment does not apply. Offspring sex comes from the male's X/Y contribution (Y → son, X → daughter), and the mutant follows whichever sex chromosome carries it; a male's mutant defaults to the Y (Male-Maker) unless the input's `sexChromosomes` says otherwise. `sex` must be present on both animals in the input.
 - **Embryonic lethality** (e.g. Homozygous Spider, Super Champagne): MK-2 calculates the genotype normally; MK-3/4 sets `isLethal: true` on the `AggregatedOutcome`.
 - **Congenital defects / epistasis** (e.g. Black Head Spider): the phenotype label reflects the visual morph, but `congenitalWarnings` must contain the underlying defect label (e.g. `"Neurological Wobble"`).
 

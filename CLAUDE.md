@@ -39,9 +39,11 @@ There are two distinct inheritance unions, and `src/worker/pipeline.ts` (`derive
 
 The engine uses `InheritancePattern` only to detect sex-linked loci (`incomplete_dominant` → `co-dominant`, `polygenic` → `recessive`). Visual/het resolution in the aggregator keys off the original dictionary `InheritanceType` instead.
 
-### Sex-linked contract: the `_malemaker` suffix
+### Sex-linked contract: the XX/XY model
 
-Sex-linked routing in MK-2 has a hidden data contract with the dictionary: a sire allele whose **id ends in `_malemaker`** (lowercased) routes exclusively to male offspring; every other allele on a sex-linked locus routes to female offspring. Sex-linked alleles in the dictionary must follow this naming convention or sex assignment will be wrong.
+Sex-linked loci (`isSexLinked: true`) are modeled on the ball python's XX(♀)/XY(♂) system in `buildSexLinkedMatrix`. **Offspring sex is set by which sex chromosome the male contributes** — Y → son, X → daughter — independent of the morph, so every cross has a 1:1 baseline sex ratio. A mutant allele reaches an offspring through whichever sex chromosome (from either parent) carries it.
+
+Which sex chromosome a *male's* mutant rides is a per-animal fact, not a dictionary property (the same `banana` allele is Male-Maker on the Y or Female-Maker on the X). The input conveys it via the optional `sexChromosomes` array on `LocusInput`, aligned to `alleles` order; when omitted, a male's mutant defaults to the **Y (Male-Maker)**. There is no `_malemaker` id-suffix convention anymore — the dictionary's sex-linked alleles are plain (e.g. `banana`).
 
 ### Behaviors UI consumers rely on
 
@@ -80,7 +82,7 @@ Sex-linked routing in MK-2 has a hidden data contract with the dictionary: a sir
 
 ## Biological Edge Cases
 
-- **Sex-linked loci** (e.g. Banana/Coral Glow): abandon independent assortment; map the mutated allele to the correct sex based on the sire's heterogametic passing. Requires `sex` to be present on both animals in the input.
+- **Sex-linked loci** (e.g. Banana/Coral Glow): abandon independent assortment; offspring sex comes from the male's X/Y contribution, and the mutant follows whichever sex chromosome carries it (see the XX/XY contract above). Requires `sex` to be present on both animals in the input.
 - **Embryonic lethality** (e.g. Homozygous Spider, Super Champagne): MK-2 calculates normally; MK-3/4 sets `isLethal: true` on the `AggregatedOutcome`.
 - **Congenital defects / epistasis** (e.g. Black Head Spider): the phenotype label reflects the visual morph, but `congenitalWarnings` must still contain the underlying defect (e.g. `"Neurological Wobble"`).
 
