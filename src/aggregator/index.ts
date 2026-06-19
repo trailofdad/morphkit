@@ -56,17 +56,25 @@ function collectVisualTraits(
   return traits;
 }
 
+/** Indexes an outcome's loci by id for O(1) lookup across combo/lethal/defect scans. */
+function indexLoci(loci: readonly NormalizedLocus[]): Map<string, NormalizedLocus> {
+  const byId = new Map<string, NormalizedLocus>();
+  for (const locus of loci) byId.set(locus.locusId, locus);
+  return byId;
+}
+
 /**
- * True when every locus condition in `required` is satisfied by `loci`, comparing
- * each allele pair order-independently. Shared by combo, lethal, and defect-combo
- * matching.
+ * True when every locus condition in `required` is satisfied by `lociById`,
+ * comparing each allele pair order-independently. Shared by combo, lethal, and
+ * defect-combo matching; takes a prebuilt id→locus map so a single outcome's
+ * loci aren't re-scanned once per dictionary entry.
  */
 function genotypeMatches(
-  loci: readonly NormalizedLocus[],
+  lociById: Map<string, NormalizedLocus>,
   required: Record<string, [string, string]>,
 ): boolean {
   return Object.entries(required).every(([locusId, [ra, rb]]) => {
-    const locus = loci.find((l) => l.locusId === locusId);
+    const locus = lociById.get(locusId);
     if (!locus) return false;
     const [a, b] = locus.alleles;
     return (a === ra && b === rb) || (a === rb && b === ra);
@@ -75,6 +83,7 @@ function genotypeMatches(
 
 function collectCongenitalWarnings(
   loci: readonly NormalizedLocus[],
+  lociById: Map<string, NormalizedLocus>,
   dictionary: MorphkitDictionary,
 ): string[] {
   const warnings = new Set<string>();
@@ -92,7 +101,7 @@ function collectCongenitalWarnings(
   }
   // REQ-11: combination-triggered congenital defects (e.g. Bug Eyes, Duckbilling).
   for (const { triggerGenotype, defects } of dictionary.defectCombos ?? []) {
-    if (genotypeMatches(loci, triggerGenotype)) {
+    if (genotypeMatches(lociById, triggerGenotype)) {
       for (const d of defects) warnings.add(d);
     }
   }
@@ -100,21 +109,22 @@ function collectCongenitalWarnings(
 }
 
 function isLethalOutcome(
-  loci: readonly NormalizedLocus[],
+  lociById: Map<string, NormalizedLocus>,
   dictionary: MorphkitDictionary,
 ): boolean {
   return dictionary.lethalCombos.some(({ triggerGenotype }) =>
-    genotypeMatches(loci, triggerGenotype),
+    genotypeMatches(lociById, triggerGenotype),
   );
 }
 
 // REQ-3.3: Returns the matching combo's marketName, or undefined if no match.
 function matchCombo(
-  loci: readonly NormalizedLocus[],
+  lociById: Map<string, NormalizedLocus>,
   dictionary: MorphkitDictionary,
 ): string | undefined {
-  return dictionary.combos.find(({ requiredGenotype }) => genotypeMatches(loci, requiredGenotype))
-    ?.marketName;
+  return dictionary.combos.find(({ requiredGenotype }) =>
+    genotypeMatches(lociById, requiredGenotype),
+  )?.marketName;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +171,7 @@ export function aggregateOutcomes(
   }
 
   const aggregated = outcomes.map((outcome): AggregatedOutcome => {
+    const lociById = indexLoci(outcome.loci);
     const phenotypeNames = collectVisualTraits(outcome.loci, dictionary);
     const possibleHets: PossibleHet[] = [];
 
@@ -175,7 +186,7 @@ export function aggregateOutcomes(
     }
 
     const comboName =
-      matchCombo(outcome.loci, dictionary) ??
+      matchCombo(lociById, dictionary) ??
       (phenotypeNames.length > 0 ? phenotypeNames.join(' ') : undefined);
 
     return {
@@ -185,8 +196,8 @@ export function aggregateOutcomes(
       decimalProbability: outcome.decimalProbability,
       percentageProbability: `${Math.round(outcome.decimalProbability * 100)}%`,
       possibleHets,
-      isLethal: isLethalOutcome(outcome.loci, dictionary),
-      congenitalWarnings: collectCongenitalWarnings(outcome.loci, dictionary),
+      isLethal: isLethalOutcome(lociById, dictionary),
+      congenitalWarnings: collectCongenitalWarnings(outcome.loci, lociById, dictionary),
       sex: outcome.sex,
       polygenics,
     };

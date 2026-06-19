@@ -11,8 +11,17 @@ import {
 // Internal types
 // ---------------------------------------------------------------------------
 
+/** A running multi-locus outcome during the fold. */
 interface PartialOutcome {
   readonly loci: readonly NormalizedLocus[];
+  readonly probability: number;
+  readonly sex?: AnimalSex;
+}
+
+/** One genotype in a single locus's probability distribution. */
+interface LocusGenotype {
+  readonly locus: NormalizedLocus;
+  readonly probability: number;
   readonly sex?: AnimalSex;
 }
 
@@ -21,8 +30,15 @@ interface PartialOutcome {
 // ---------------------------------------------------------------------------
 
 /**
- * MK-2: Executes the Cartesian Punnett Matrix over all loci in the
- * normalized breeding pair and returns deduplicated GenotypeOutcome[].
+ * MK-2: Computes every possible offspring genotype for the normalized breeding
+ * pair and returns them as GenotypeOutcome[].
+ *
+ * Rather than materializing the 4ⁿ raw-gamete fusion table and hash-deduping it,
+ * the engine builds each locus's small genotype→probability distribution once
+ * (≤3 genotypes autosomal, ≤4 sex-linked) and combines loci by **independent
+ * assortment** — multiplying probabilities. Because each distribution is already
+ * grouped and distinct loci never collide, the running set only ever holds the
+ * true output size (≤3ⁿ), with no 4ⁿ intermediate and no global dedup map.
  *
  * Sex-linked loci (flagged in `dictionary`) bypass independent assortment and
  * are modeled on the XX/XY sex-determination system: offspring sex is set by
@@ -36,20 +52,24 @@ export function computePunnettMatrix(
   pair: NormalizedBreedingPair,
   dictionary: CdnDictionary,
 ): GenotypeOutcome[] {
-  // Start with a single empty partial outcome, then fold each locus in.
-  let combined: PartialOutcome[] = [{ loci: [] }];
+  // Index each parent's loci once so lookups inside the fold are O(1) rather
+  // than a linear genotype.find per locus (was O(loci²)).
+  const sireById = indexGenotype(pair.sire.genotype);
+  const damById = indexGenotype(pair.dam.genotype);
+  const sexLinked = sexLinkedLoci(dictionary);
+
+  let combined: PartialOutcome[] = [{ loci: [], probability: 1 }];
 
   for (const { locusId } of pair.sire.genotype) {
-    const sireLocus = requireLocus(pair.sire.genotype, locusId);
-    const damLocus = requireLocus(pair.dam.genotype, locusId);
-    const matrix = isSexLinked(locusId, dictionary)
-      ? buildSexLinkedMatrix(sireLocus, damLocus, pair.sire.sex)
-      : buildAutosomalMatrix(sireLocus, damLocus);
-    combined = crossProduct(combined, matrix);
+    const sireLocus = requireLocus(sireById, locusId);
+    const damLocus = requireLocus(damById, locusId);
+    const distribution = sexLinked.has(locusId)
+      ? buildSexLinkedDistribution(sireLocus, damLocus, pair.sire.sex)
+      : buildAutosomalDistribution(sireLocus, damLocus);
+    combined = combine(combined, distribution);
   }
 
-  const totalRaw = combined.length;
-  const outcomes = deduplicate(combined, totalRaw);
+  const outcomes = finalize(combined);
 
   validateHardyWeinberg(outcomes);
 
@@ -82,37 +102,43 @@ export function validateHardyWeinberg(outcomes: GenotypeOutcome[]): void {
 }
 
 // ---------------------------------------------------------------------------
-// Per-locus 2×2 matrix
+// Per-locus genotype distributions
 // ---------------------------------------------------------------------------
 
-/** Autosomal locus: full 4-way Cartesian product of the two parents' alleles. */
-function buildAutosomalMatrix(
+/**
+ * Autosomal locus: the 2×2 allele cross grouped into its ≤3 distinct genotypes,
+ * each weighted by its share of the four equally-likely pairings (0.25 apiece).
+ */
+function buildAutosomalDistribution(
   sireLocus: NormalizedLocus,
   damLocus: NormalizedLocus,
-): PartialOutcome[] {
-  const outcomes: PartialOutcome[] = [];
+): LocusGenotype[] {
+  const groups = new Map<string, { alleles: [string, string]; probability: number }>();
   for (const sireAllele of sireLocus.alleles) {
     for (const damAllele of damLocus.alleles) {
-      outcomes.push({
-        loci: [{ locusId: sireLocus.locusId, alleles: sortPair(sireAllele, damAllele) }],
-      });
+      const alleles = sortPair(sireAllele, damAllele);
+      addGrouped(groups, `${alleles[0]}|${alleles[1]}`, alleles, 0.25);
     }
   }
-  return outcomes; // always 4 raw outcomes per locus
+  return [...groups.values()].map(({ alleles, probability }) => ({
+    locus: { locusId: sireLocus.locusId, alleles },
+    probability,
+  }));
 }
 
 /**
  * Sex-linked locus on the XX(♀)/XY(♂) system. The male contributes either his
  * X (→ daughter) or his Y (→ son); the female always contributes one of her two
- * X chromosomes. This yields 4 equally-likely outcomes (2 sons, 2 daughters) and
- * correctly handles Male-Maker, Female-Maker, het-female and Super states — a
- * mutant reaches an offspring through whichever sex chromosome carries it.
+ * X chromosomes. The four equally-likely outcomes (2 sons, 2 daughters) are
+ * grouped by genotype+sex — correctly handling Male-Maker, Female-Maker,
+ * het-female and Super states, since a mutant reaches an offspring through
+ * whichever sex chromosome carries it.
  */
-function buildSexLinkedMatrix(
+function buildSexLinkedDistribution(
   sireLocus: NormalizedLocus,
   damLocus: NormalizedLocus,
   sireSex: AnimalSex,
-): PartialOutcome[] {
+): LocusGenotype[] {
   // The heterogametic (XY) parent is the male; the homogametic (XX) parent is
   // the female. Identify by declared sex rather than the sire/dam slot.
   const maleLocus = sireSex === 'male' ? sireLocus : damLocus;
@@ -120,14 +146,23 @@ function buildSexLinkedMatrix(
   const { xAllele, yAllele } = resolveMaleChromosomes(maleLocus);
   const locusId = sireLocus.locusId;
 
-  const outcomes: PartialOutcome[] = [];
+  const groups = new Map<
+    string,
+    { alleles: [string, string]; sex: AnimalSex; probability: number }
+  >();
   for (const femaleX of femaleLocus.alleles) {
     // Son: Y from the male parent + an X from the female parent.
-    outcomes.push({ loci: [{ locusId, alleles: sortPair(yAllele, femaleX) }], sex: 'male' });
+    const son = sortPair(yAllele, femaleX);
+    addSexed(groups, son, 'male', 0.25);
     // Daughter: X from the male parent + an X from the female parent.
-    outcomes.push({ loci: [{ locusId, alleles: sortPair(xAllele, femaleX) }], sex: 'female' });
+    const daughter = sortPair(xAllele, femaleX);
+    addSexed(groups, daughter, 'female', 0.25);
   }
-  return outcomes; // always 4 raw outcomes per locus
+  return [...groups.values()].map(({ alleles, sex, probability }) => ({
+    locus: { locusId, alleles },
+    probability,
+    sex,
+  }));
 }
 
 /**
@@ -153,70 +188,94 @@ function resolveMaleChromosomes(locus: NormalizedLocus): {
 }
 
 // ---------------------------------------------------------------------------
-// Global Cartesian product (REQ-2.3)
+// Multi-locus combination (independent assortment)
 // ---------------------------------------------------------------------------
 
-function crossProduct(
+/**
+ * Folds one locus's genotype distribution into the running outcome set: every
+ * accumulated outcome pairs with every locus genotype, multiplying their
+ * probabilities. A sex-linked locus that conflicts with an already-assigned sex
+ * is dropped (two sex-linked loci cannot demand different sexes); finalize()
+ * renormalizes for that dropped mass.
+ */
+function combine(
   accumulated: readonly PartialOutcome[],
-  next: readonly PartialOutcome[],
+  distribution: readonly LocusGenotype[],
 ): PartialOutcome[] {
   const result: PartialOutcome[] = [];
-
   for (const acc of accumulated) {
-    for (const n of next) {
-      // Biologically impossible: two sex-linked loci assigning conflicting sexes.
-      if (acc.sex !== undefined && n.sex !== undefined && acc.sex !== n.sex) continue;
-      result.push({ loci: [...acc.loci, ...n.loci], sex: acc.sex ?? n.sex });
+    for (const d of distribution) {
+      if (acc.sex !== undefined && d.sex !== undefined && acc.sex !== d.sex) continue;
+      result.push({
+        loci: [...acc.loci, d.locus],
+        probability: acc.probability * d.probability,
+        sex: acc.sex ?? d.sex,
+      });
     }
   }
-
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Deduplication & aggregation (REQ-2.4 / REQ-2.5)
-// ---------------------------------------------------------------------------
-
-function deduplicate(outcomes: readonly PartialOutcome[], totalRaw: number): GenotypeOutcome[] {
-  const countMap = new Map<string, { outcome: PartialOutcome; count: number }>();
-
-  for (const outcome of outcomes) {
-    const key = outcomeKey(outcome);
-    const entry = countMap.get(key);
-    if (entry) {
-      entry.count++;
-    } else {
-      countMap.set(key, { outcome, count: 1 });
-    }
-  }
-
-  return Array.from(countMap.values()).map(
-    ({ outcome, count }): GenotypeOutcome => ({
-      loci: outcome.loci.map((l) => ({ locusId: l.locusId, alleles: l.alleles })),
-      decimalProbability: count / totalRaw,
-      sex: outcome.sex,
+/**
+ * Renormalizes any mass dropped by sex-conflict skips back to 1.0 (a no-op for
+ * the common ≤1 sex-linked-locus case, where the total is already 1.0) and
+ * projects the running outcomes to GenotypeOutcome[].
+ */
+function finalize(combined: readonly PartialOutcome[]): GenotypeOutcome[] {
+  const total = combined.reduce((sum, o) => sum + o.probability, 0);
+  const norm = total > 0 ? total : 1;
+  return combined.map(
+    (o): GenotypeOutcome => ({
+      loci: o.loci.map((l) => ({ locusId: l.locusId, alleles: l.alleles })),
+      decimalProbability: o.probability / norm,
+      sex: o.sex,
     }),
   );
-}
-
-function outcomeKey(outcome: PartialOutcome): string {
-  const lociPart = [...outcome.loci]
-    .sort((a, b) => a.locusId.localeCompare(b.locusId))
-    .map((l) => `${l.locusId}:${l.alleles[0]}|${l.alleles[1]}`)
-    .join(';');
-  return `${lociPart}~${outcome.sex ?? ''}`;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isSexLinked(locusId: string, dictionary: CdnDictionary): boolean {
-  return dictionary.find((e) => e.locusId === locusId)?.inheritancePattern === 'sex-linked';
+function addGrouped(
+  groups: Map<string, { alleles: [string, string]; probability: number }>,
+  key: string,
+  alleles: [string, string],
+  weight: number,
+): void {
+  const entry = groups.get(key);
+  if (entry) entry.probability += weight;
+  else groups.set(key, { alleles, probability: weight });
 }
 
-function requireLocus(genotype: readonly NormalizedLocus[], locusId: string): NormalizedLocus {
-  const locus = genotype.find((l) => l.locusId === locusId);
+function addSexed(
+  groups: Map<string, { alleles: [string, string]; sex: AnimalSex; probability: number }>,
+  alleles: [string, string],
+  sex: AnimalSex,
+  weight: number,
+): void {
+  const key = `${alleles[0]}|${alleles[1]}~${sex}`;
+  const entry = groups.get(key);
+  if (entry) entry.probability += weight;
+  else groups.set(key, { alleles, sex, probability: weight });
+}
+
+function indexGenotype(genotype: readonly NormalizedLocus[]): Map<string, NormalizedLocus> {
+  const byId = new Map<string, NormalizedLocus>();
+  for (const locus of genotype) byId.set(locus.locusId, locus);
+  return byId;
+}
+
+function sexLinkedLoci(dictionary: CdnDictionary): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of dictionary) {
+    if (entry.inheritancePattern === 'sex-linked') ids.add(entry.locusId);
+  }
+  return ids;
+}
+
+function requireLocus(byId: Map<string, NormalizedLocus>, locusId: string): NormalizedLocus {
+  const locus = byId.get(locusId);
   if (!locus) throw new Error(`Locus "${locusId}" missing from genotype — MK-1 symmetry violated`);
   return locus;
 }

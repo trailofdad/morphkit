@@ -392,6 +392,30 @@ describe('REQ-2.4: canonical allele sorting', () => {
 // Edge cases
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// #14 — per-locus distribution scales to the true output size (no 4ⁿ blowup)
+// ---------------------------------------------------------------------------
+
+describe('#14: independent-assortment fold avoids the 4ⁿ intermediate', () => {
+  it('a 7-locus het × het cross yields exactly 3⁷ genotypes summing to 1.0', () => {
+    const hetLocus = (i: number) => ({ locusId: `locus_${i}`, alleles: ['m' + i, 'normal'] });
+    const genotype = Array.from({ length: 7 }, (_, i) => hetLocus(i));
+    const pair = makePair({
+      sire: { id: 'sire', sex: 'male', genotype, polygenics: [] },
+      dam: { id: 'dam', sex: 'female', genotype, polygenics: [] },
+    });
+
+    const outcomes = computePunnettMatrix(pair, []);
+
+    // Each het × het locus contributes 3 genotypes; the true joint size is 3⁷,
+    // never the 4⁷ raw-gamete table. Reaching this assertion at all proves the
+    // fold did not allocate 16 384 intermediates.
+    expect(outcomes).toHaveLength(3 ** 7); // 2187
+    const sum = outcomes.reduce((acc, o) => acc + o.decimalProbability, 0);
+    expect(sum).toBeCloseTo(1.0, 10);
+  });
+});
+
 describe('edge cases', () => {
   it('both animals homozygous normal produces one outcome at 1.0', () => {
     const pair = makePair({
