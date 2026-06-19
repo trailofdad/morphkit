@@ -86,6 +86,55 @@ export interface MorphkitCalculationInput {
 }
 
 // ---------------------------------------------------------------------------
+// Simple API tier — name-resolution front-end (desugars to MorphkitCalculationInput)
+// ---------------------------------------------------------------------------
+
+/**
+ * One animal in the simple tier: a flat list of morph names instead of an
+ * explicit per-locus genotype. The resolver infers each name's genotype from the
+ * dictionary's inheritance pattern (see `resolveSimpleInput`).
+ */
+export interface SimpleAnimalInput {
+  readonly id: string;
+  /** MK-1 still requires sex once the pipeline runs; carried through unchanged. */
+  readonly sex?: AnimalSex;
+  /** Flat morph names, e.g. ["Pastel", "Het Clown", "Super Cinnamon", "Freeway"]. */
+  readonly morphs: readonly string[];
+  readonly polygenics?: readonly string[];
+}
+
+/** Top-level simple-tier input — the name-list analogue of MorphkitCalculationInput. */
+export interface SimpleCalculationInput {
+  readonly calculationMode?: CalculationMode;
+  readonly sire: SimpleAnimalInput;
+  readonly dam: SimpleAnimalInput;
+}
+
+/**
+ * The per-morph result of name resolution. A UI can surface exactly which inputs
+ * were ambiguous or unresolved (`resolved: false` and/or a `message`). Resolved
+ * morphs carry the `locusId` and `alleles` they desugared to (before locus
+ * merging); combo names that span multiple loci omit those two fields.
+ */
+export interface MorphResolution {
+  /** The original morph string supplied by the caller. */
+  readonly input: string;
+  /** Which parent the morph belonged to (warnings from both parents share one array). */
+  readonly parent: 'sire' | 'dam';
+  readonly locusId?: string;
+  readonly alleles?: [string, string];
+  readonly resolved: boolean;
+  /** Present for ambiguous, unknown, or informational (dominant/super) cases. */
+  readonly message?: string;
+}
+
+/** Output of `resolveSimpleInput`: a complex input plus the per-morph resolution log. */
+export interface SimpleResolution {
+  readonly input: MorphkitCalculationInput;
+  readonly warnings: MorphResolution[];
+}
+
+// ---------------------------------------------------------------------------
 // Normalized Breeding Pair — output of MK-1 Validation
 // ---------------------------------------------------------------------------
 

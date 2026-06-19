@@ -9,6 +9,8 @@ import {
   WorkerOutboundMessage,
 } from './types';
 import { runCalculationPipeline } from './worker/pipeline';
+import { resolveSimpleInput } from './simple';
+import type { MorphResolution, SimpleCalculationInput } from './types';
 
 // Minimal worker interface typed here so src/index.ts compiles without the
 // WebWorker lib, which is dropped in the Jest/Node test environment.
@@ -48,6 +50,25 @@ export function calculateMorphs(
   dictionary: MorphkitDictionary,
 ): MorphkitCalculationOutput {
   return runCalculationPipeline(input, dictionary);
+}
+
+/**
+ * Simple tier: runs a full calculation from a per-parent list of morph **names**
+ * instead of explicit genotypes. The names are desugared to a complex
+ * `MorphkitCalculationInput` via {@link resolveSimpleInput} (dictionary- and
+ * inheritance-aware), then the standard synchronous pipeline runs unchanged.
+ *
+ * Returns both the `output` and the per-morph `warnings` so a UI can surface any
+ * ambiguous or unresolved names. Unresolved morphs are excluded from the cross.
+ * Use {@link resolveSimpleInput} directly if you want to inspect or edit the
+ * desugared complex input before calculating.
+ */
+export function calculateMorphsSimple(
+  input: SimpleCalculationInput,
+  dictionary: MorphkitDictionary,
+): { output: MorphkitCalculationOutput; warnings: MorphResolution[] } {
+  const { input: complex, warnings } = resolveSimpleInput(input, dictionary);
+  return { output: runCalculationPipeline(complex, dictionary), warnings };
 }
 
 /**
@@ -101,6 +122,8 @@ export function calculateMorphsAsync(
   });
 }
 
+export { resolveSimpleInput } from './simple';
+
 export type {
   AggregatedOutcome,
   AnimalInput,
@@ -111,8 +134,12 @@ export type {
   MorphkitCalculationInput,
   MorphkitCalculationOutput,
   MorphkitDictionary,
+  MorphResolution,
   NormalizedBreedingPair,
   PossibleHet,
+  SimpleAnimalInput,
+  SimpleCalculationInput,
+  SimpleResolution,
 } from './types';
 
 export {

@@ -152,7 +152,7 @@ Morphkit is architected around the **locus + allele** model (built with RGI / sh
 | Tier | Input shape | When to use |
 |---|---|---|
 | **Complex** (available today) | `genotype: [{ locusId, alleles: [a, b] }]` — every locus and both alleles stated explicitly | RGI-style apps that track genotypes precisely, including zygosity and het status |
-| **Simple** (planned) | `morphs: string[]` per parent — a flat list of morph names, no second allele required | Lightweight integrations that only know visual/named morphs and want outcomes + percentages |
+| **Simple** (available today) | `morphs: string[]` per parent — a flat list of morph names, no second allele required | Lightweight integrations that only know visual/named morphs and want outcomes + percentages |
 
 **The simple tier is a thin front-end, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract-planned) for the full contract). For example:
 
@@ -162,7 +162,21 @@ Morphkit is architected around the **locus + allele** model (built with RGI / sh
 - `"Freeway"` (a registered combo) → expands to the combo's `requiredGenotype`
 - an unknown name, or one that maps to more than one genotype, is returned with a `message` and excluded from the cross
 
-> The simple tier is a documented, agreed design and is **not yet implemented**. Until it ships, use the complex input shown in [Quick Start](#quick-start).
+```ts
+import { calculateMorphsSimple } from '@trailofdad/morphkit';
+
+const { output, warnings } = calculateMorphsSimple(
+  {
+    sire: { id: 'sire', sex: 'male', morphs: ['Pastel', 'Het Clown'] },
+    dam: { id: 'dam', sex: 'female', morphs: ['Freeway', 'Possible Het Clown'] },
+  },
+  dictionary,
+);
+
+// `warnings` is one MorphResolution per input morph — inspect `resolved`/`message`
+// to surface ambiguous or unknown names. Use `resolveSimpleInput` instead if you
+// want the desugared complex input without running the calculation.
+```
 
 ## Possible hets & shed testing
 
@@ -220,7 +234,7 @@ The `MorphkitDictionary` is maintained in a separate repository:
 
 If you want to add a new morph, fix an allele name, or register a combo or lethal combination, contributions belong there — not in this repo. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full split.
 
-> **Synonyms.** Many morphs are sold under multiple names (e.g. Toffee = Candy, Lesser = Butter). The dictionary records these via an `aliases` field on each allele. Engine-side alias resolution — collapsing a synonym to its canonical allele during a calculation — is in progress ([#7](https://github.com/trailofdad/morphkit/issues/7)); until it lands, supply the canonical allele id in the complex input.
+> **Synonyms.** Many morphs are sold under multiple names (e.g. Toffee = Candy, Lesser = Butter). The dictionary records these via an `aliases` field on each allele. MK-1 resolves a synonym, display name, or short name to its canonical allele id during a calculation ([#7](https://github.com/trailofdad/morphkit/issues/7)), so either the canonical id or any registered alias is accepted in the complex input — and the simple tier resolves names the same way.
 
 ## Contributing
 

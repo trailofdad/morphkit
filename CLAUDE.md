@@ -90,11 +90,11 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 - **Embryonic lethality** (e.g. Homozygous Spider, Super Champagne): MK-2 calculates normally; MK-3/4 sets `isLethal: true` on the `AggregatedOutcome`.
 - **Congenital defects / epistasis** (e.g. Black Head Spider): the phenotype label reflects the visual morph, but `congenitalWarnings` must still contain the underlying defect (e.g. `"Neurological Wobble"`).
 
-## Simple API name-resolution contract (planned)
+## Simple API name-resolution contract
 
-Morphkit exposes two input tiers (see README → "API tiers"). The **complex** tier — explicit `{ locusId, alleles: [a, b] }` — exists today and is the canonical RGI-accurate form. The **simple** tier is an agreed design, **not yet implemented**. When building it, follow these rules:
+Morphkit exposes two input tiers (see README → "API tiers"). The **complex** tier — explicit `{ locusId, alleles: [a, b] }` — is the canonical RGI-accurate form. The **simple** tier is implemented in `src/simple/` (`resolveSimpleInput`, plus the `calculateMorphsSimple` convenience in `src/index.ts`). It follows these rules:
 
-**Architectural rule — desugar, don't fork.** The simple resolver is a thin front-end that converts a per-parent morph-name list into a standard `MorphkitCalculationInput` (complex form) and then runs the existing MK-1 → MK-2 → MK-3/4 pipeline **unchanged**. It must not contain its own Punnett or aggregation logic. Suggested placement: a new pre-MK-1 layer (e.g. `src/simple/`) whose output is `{ input: MorphkitCalculationInput, warnings: MorphResolution[] }`.
+**Architectural rule — desugar, don't fork.** The simple resolver is a thin pre-MK-1 front-end that converts a per-parent morph-name list into a standard `MorphkitCalculationInput` (complex form); the caller then runs the existing MK-1 → MK-2 → MK-3/4 pipeline **unchanged**. It contains **no** Punnett or aggregation logic. `resolveSimpleInput` returns `{ input: MorphkitCalculationInput, warnings: MorphResolution[] }`.
 
 **Input shape (simple tier).** Each parent supplies `morphs: string[]` (plus `id`, `sex`, optional `polygenics`) instead of a `genotype`.
 
@@ -114,7 +114,7 @@ Morphkit exposes two input tiers (see README → "API tiers"). The **complex** t
 - `Super` applied to a recessive → warn (nonsensical market term); still treat as homozygous.
 - `dominant` bare name → informational note that the super form cannot be inferred from the name; defaulting to het.
 
-The resolution result per morph should be a `MorphResolution` (`{ input, locusId?, alleles?, resolved, message? }`) so a UI can surface exactly which inputs were ambiguous.
+The resolution result per morph is a `MorphResolution` (`{ input, parent, locusId?, alleles?, resolved, message? }`) so a UI can surface exactly which inputs were ambiguous. `warnings` carries one entry per input morph (both parents merged, tagged by `parent`); a `polygenic` bare name resolves recessive-like (`[name, name]`) under the standard-mode heuristic.
 
 ## Test Environment Note
 
