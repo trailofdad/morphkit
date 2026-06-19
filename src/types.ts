@@ -149,7 +149,11 @@ export interface AggregatedOutcome {
   readonly genotype: GenotypeOutcome;
   /** The resolved visual phenotype name(s), e.g. ["Pastel", "Clown"]. */
   readonly phenotypeNames: readonly PhenotypeName[];
-  /** The combined combo name if one is registered, e.g. "Freeway". */
+  /**
+   * The market combo name when a registered ComboDefinition matches; otherwise
+   * the joined phenotypeNames (e.g. "Pastel Clown"). Undefined only for
+   * all-Normal outcomes.
+   */
   readonly comboName?: PhenotypeName;
   /** Fractional probability, mirrored from the genotype for convenience. */
   readonly decimalProbability: number;
@@ -228,6 +232,15 @@ export interface AlleleDefinition {
   id: string;             // e.g., "spider", "banana_malemaker"
   name: string;           // e.g., "Spider", "Banana (Male Maker)"
   defects?: string[];     // e.g., ["Neurological Wobble"]
+  /** Community synonyms / abbreviations for this allele, e.g. ["HGW"]. */
+  aliases?: string[];
+  /** Very short labels for tub tags or printing, e.g. ["Past"]. */
+  shortNames?: string[];
+  /**
+   * IDs of other alleles at THIS SAME locus that are visually indistinguishable
+   * from this one in the single-gene state (e.g. asphalt ↔ gravel ↔ yellowbelly).
+   */
+  indistinctFrom?: string[];
 }
 
 export interface LocusDefinition {
@@ -240,6 +253,10 @@ export interface LocusDefinition {
 
 export interface ComboDefinition {
   marketName: string;             // e.g., "Freeway"
+  /** Alternative community names for this combo. */
+  aliases?: string[];
+  /** Very short labels for tub tags or printing. */
+  shortNames?: string[];
   // Map of locusId to required alleles.
   // e.g., { "yellowbelly_complex": ["yellowbelly", "asphalt"] }
   requiredGenotype: Record<string, [string, string]>;

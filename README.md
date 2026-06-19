@@ -151,7 +151,7 @@ Morphkit is architected around the **locus + allele** model (built with RGI / sh
 
 ## Architecture
 
-Data flows through five layers with strict responsibility boundaries. No layer skips or reaches back.
+Data flows through six layers (MK-1 through MK-6) with strict responsibility boundaries. No layer skips or reaches back.
 
 | Layer | Path | Role |
 |---|---|---|
@@ -168,8 +168,8 @@ Data flows through five layers with strict responsibility boundaries. No layer s
 | Class | Thrown when |
 |---|---|
 | `SchemaValidationError` | Input payload fails schema validation (MK-1) |
-| `InvalidGenotypeError` | Locus array does not contain exactly 2 alleles |
-| `CartesianMatrixError` | Probability sum ≠ 1.0 |
+| `InvalidGenotypeError` | A locus has **more than 2** alleles (0 alleles throws `SchemaValidationError`; a single allele is normalized to `[allele, "Normal"]`) |
+| `CartesianMatrixError` | Probability sum ≠ 1.0 (within a small floating-point tolerance) |
 | `DictionaryNetworkError` | CDN fetch fails with no local cache to fall back to |
 
 ## Development
@@ -195,6 +195,8 @@ The `MorphkitDictionary` is maintained in a separate repository:
 **[trailofdad/morphkit-dictionary](https://github.com/trailofdad/morphkit-dictionary)**
 
 If you want to add a new morph, fix an allele name, or register a combo or lethal combination, contributions belong there — not in this repo. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full split.
+
+> **Synonyms.** Many morphs are sold under multiple names (e.g. Toffee = Candy, Lesser = Butter). The dictionary records these via an `aliases` field on each allele. Engine-side alias resolution — collapsing a synonym to its canonical allele during a calculation — is in progress ([#7](https://github.com/trailofdad/morphkit/issues/7)); until it lands, supply the canonical allele id in the complex input.
 
 ## Contributing
 

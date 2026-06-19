@@ -53,12 +53,23 @@ export function computePunnettMatrix(
 }
 
 /**
+ * Tolerance for the Hardy-Weinberg sum check. Outcome probabilities are summed
+ * from per-outcome fractions; once any locus yields a non-power-of-two
+ * denominator (sex-conflict skips, future weighted/crossover splits), the sum
+ * can land an ULP off 1.0. A genuine mapping error (a mis-assigned allelic
+ * complex) deviates by far more than this, so an epsilon preserves the check's
+ * intent while removing false positives on valid crosses.
+ */
+const HARDY_WEINBERG_EPSILON = 1e-9;
+
+/**
  * Validates Hardy-Weinberg equilibrium: the sum of all decimalProbability
- * values must equal exactly 1.0. Exported for direct unit testing (AC-3).
+ * values must equal 1.0 within HARDY_WEINBERG_EPSILON. Exported for direct
+ * unit testing (AC-3).
  */
 export function validateHardyWeinberg(outcomes: GenotypeOutcome[]): void {
   const sum = outcomes.reduce((acc, o) => acc + o.decimalProbability, 0);
-  if (sum !== 1.0) {
+  if (Math.abs(sum - 1.0) > HARDY_WEINBERG_EPSILON) {
     throw new CartesianMatrixError(
       `Hardy-Weinberg violation: probability sum is ${sum}, expected 1.0`,
       sum,

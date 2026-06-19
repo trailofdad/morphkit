@@ -196,6 +196,18 @@ describe('AC-3: Hardy-Weinberg validation', () => {
     ];
     expect(() => validateHardyWeinberg(good)).not.toThrow();
   });
+
+  it('tolerates floating-point drift within epsilon (non-dyadic denominators)', () => {
+    // 1/3 + 1/3 + 1/3 sums to 0.9999999999999999 in IEEE-754, not exactly 1.0.
+    // Exact equality (the old check) threw here; the epsilon tolerance must not.
+    const third = 1 / 3;
+    const outcomes: GenotypeOutcome[] = [
+      { loci: [], decimalProbability: third },
+      { loci: [], decimalProbability: third },
+      { loci: [], decimalProbability: third },
+    ];
+    expect(() => validateHardyWeinberg(outcomes)).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
