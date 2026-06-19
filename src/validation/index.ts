@@ -134,6 +134,29 @@ function normalizeLocus(
     return canonical;
   };
 
+  // REQ-12: 'het' / 'pos_het' express a single-mutant carrier state. 'pos_het'
+  // carries a probability the pipeline expands into a carrier/non-carrier mixture.
+  if (locus.zygosity) {
+    const mutant = locus.alleles.map(resolve).find((a) => a !== 'normal');
+    if (mutant === undefined) {
+      throw new SchemaValidationError(
+        `zygosity at ${path} requires a mutant allele (got only "normal")`,
+        path,
+      );
+    }
+    const carrierAlleles: [string, string] = [mutant, 'normal'];
+    if (locus.zygosity === 'het') return { locusId, alleles: carrierAlleles };
+
+    const carrierProbability = locus.carrierProbability ?? 0.5;
+    if (carrierProbability < 0 || carrierProbability > 1) {
+      throw new SchemaValidationError(
+        `carrierProbability at ${path} must be between 0 and 1`,
+        path,
+      );
+    }
+    return { locusId, alleles: carrierAlleles, carrierProbability };
+  }
+
   const alleles: [string, string] =
     locus.alleles.length === 2
       ? [resolve(locus.alleles[0]), resolve(locus.alleles[1])]

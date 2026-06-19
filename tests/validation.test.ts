@@ -581,3 +581,55 @@ describe('sexChromosomes normalization', () => {
     expect(locus?.sexChromosomes).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-12 — carrier zygosity (het / pos_het)
+// ---------------------------------------------------------------------------
+
+describe('carrier zygosity normalization', () => {
+  function sireLocus(zygosity: 'het' | 'pos_het', carrierProbability?: number) {
+    return normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown'], zygosity, carrierProbability }],
+          polygenics: [],
+        },
+      }),
+    ).sire.genotype.find((l) => l.locusId === 'clown_locus');
+  }
+
+  it("'het' expands to a definite [mutant, normal] carrier with no carrierProbability", () => {
+    const locus = sireLocus('het');
+    expect(locus?.alleles).toEqual(['clown', 'normal']);
+    expect(locus?.carrierProbability).toBeUndefined();
+  });
+
+  it("'pos_het' defaults to a 0.5 carrierProbability", () => {
+    const locus = sireLocus('pos_het');
+    expect(locus?.alleles).toEqual(['clown', 'normal']);
+    expect(locus?.carrierProbability).toBe(0.5);
+  });
+
+  it("'pos_het' honors an explicit carrierProbability (e.g. 66%)", () => {
+    expect(sireLocus('pos_het', 0.66)?.carrierProbability).toBe(0.66);
+  });
+
+  it('throws for a carrierProbability outside 0–1', () => {
+    expect(() => sireLocus('pos_het', 1.5)).toThrow(SchemaValidationError);
+  });
+
+  it('throws when zygosity is given without a mutant allele', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'clown_locus', alleles: ['normal'], zygosity: 'pos_het' }],
+            polygenics: [],
+          },
+        }),
+      ),
+    ).toThrow(SchemaValidationError);
+  });
+});

@@ -53,6 +53,16 @@ export interface LocusInput {
    * for females (both alleles ride an X).
    */
   readonly sexChromosomes?: readonly ('X' | 'Y')[];
+  /**
+   * Carrier zygosity when the locus is stated with a single mutant allele:
+   * `'het'` is a proven heterozygote (`[allele, normal]`); `'pos_het'` is a
+   * possible (unproven) carrier, for which the engine produces the probabilistic
+   * offspring distribution weighted by `carrierProbability`. A DNA-proven positive
+   * is expressed as `'het'`; a proven negative by omitting the locus.
+   */
+  readonly zygosity?: 'het' | 'pos_het';
+  /** Carrier probability for a `'pos_het'` locus, 0–1. Defaults to 0.5. */
+  readonly carrierProbability?: number;
 }
 
 /** Represents one animal in the breeding pair as provided by the caller. */
@@ -95,6 +105,12 @@ export interface NormalizedLocus {
    * autosomal loci and on the homogametic (female) parent.
    */
   readonly sexChromosomes?: readonly ['X' | 'Y', 'X' | 'Y'];
+  /**
+   * Present when the locus came in as `'pos_het'`. The pipeline expands it into a
+   * carrier (`[allele, normal]`) vs non-carrier (`[normal, normal]`) mixture
+   * weighted by this probability before running the Punnett matrix.
+   */
+  readonly carrierProbability?: number;
 }
 
 /** One animal after MK-1 normalization. */

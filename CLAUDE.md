@@ -45,6 +45,10 @@ Sex-linked loci (`isSexLinked: true`) are modeled on the ball python's XX(♀)/X
 
 Which sex chromosome a *male's* mutant rides is a per-animal fact, not a dictionary property (the same `banana` allele is Male-Maker on the Y or Female-Maker on the X). The input conveys it via the optional `sexChromosomes` array on `LocusInput`, aligned to `alleles` order; when omitted, a male's mutant defaults to the **Y (Male-Maker)**. There is no `_malemaker` id-suffix convention anymore — the dictionary's sex-linked alleles are plain (e.g. `banana`).
 
+### Possible-het input and shed testing (`pos_het`)
+
+A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[allele, normal]`) or `'pos_het'` (an unproven carrier). MK-1 tags a `pos_het` locus with a `carrierProbability` (default `0.5`); the pipeline (`runCalculationPipeline`) then expands each `pos_het` locus into a carrier branch (weight `p`) and a non-carrier branch (weight `1 − p`), runs MK-2 on every combination, and merges the weighted genotype distributions before aggregation. **MK-2 and MK-3/4 run unchanged** — the expansion lives entirely in the pipeline. This is the shed-testing workflow: a DNA-proven positive collapses to `'het'`, a proven negative is expressed by omitting the locus.
+
 ### Behaviors UI consumers rely on
 
 - **`comboName` is rarely undefined.** If no registered `ComboDefinition` matches, the aggregator falls back to the joined `phenotypeNames`; it is undefined only for all-Normal outcomes.

@@ -149,6 +149,15 @@ Morphkit is architected around the **locus + allele** model (built with RGI / sh
 
 > The simple tier is a documented, agreed design and is **not yet implemented**. Until it ships, use the complex input shown in [Quick Start](#quick-start).
 
+## Possible hets & shed testing
+
+Each `genotype` locus can declare a carrier `zygosity` instead of spelling out both alleles:
+
+- `{ locusId: 'clown_locus', alleles: ['clown'], zygosity: 'het' }` — a **proven** heterozygote.
+- `{ locusId: 'clown_locus', alleles: ['clown'], zygosity: 'pos_het', carrierProbability: 0.66 }` — a **possible het** (unproven carrier). The engine produces the probabilistic offspring distribution weighted by `carrierProbability` (defaults to `0.5`).
+
+This is the shed-testing / qPCR workflow: model an unproven parent as `pos_het`, and when a DNA test comes back, collapse it to `'het'` (proven positive) or drop the locus (proven negative) — no separate "DNA proven" flag needed.
+
 ## Architecture
 
 Data flows through six layers (MK-1 through MK-6) with strict responsibility boundaries. No layer skips or reaches back.
