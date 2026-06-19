@@ -243,7 +243,9 @@ export type InheritanceType = 'recessive' | 'dominant' | 'incomplete_dominant' |
 export interface AlleleDefinition {
   id: string; // e.g., "spider", "banana_malemaker"
   name: string; // e.g., "Spider", "Banana (Male Maker)"
-  defects?: string[]; // e.g., ["Neurological Wobble"]
+  defects?: string[]; // fires het or homozygous, e.g. ["Neurological Wobble"]
+  /** Defects that fire only in the homozygous (super) state, e.g. Super Sable wobble. */
+  superDefects?: string[];
   /** Community synonyms / abbreviations for this allele, e.g. ["HGW"]. */
   aliases?: string[];
   /** Very short labels for tub tags or printing, e.g. ["Past"]. */
@@ -280,12 +282,20 @@ export interface LethalComboDefinition {
   triggerGenotype: Record<string, [string, string]>;
 }
 
+export interface DefectComboDefinition {
+  // Loci conditions that trigger a congenital defect (not lethal), e.g. "Bug Eyes"
+  // from a BEL-super × Piebald, or "Duckbilling" from Super Cinnamon.
+  triggerGenotype: Record<string, [string, string]>;
+  defects: string[]; // e.g., ["Bug Eyes"]
+}
+
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
   loci: Record<string, LocusDefinition>; // O(1) Locus lookup
   combos: ComboDefinition[]; // Array of market combos to match against
   lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
+  defectCombos?: DefectComboDefinition[]; // Combination-triggered congenital defects
   polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }
 

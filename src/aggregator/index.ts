@@ -29,6 +29,11 @@ function isCarrierAtLocus(alleles: readonly [string, string]): boolean {
   return (!isNormal(a) && isNormal(b)) || (isNormal(a) && !isNormal(b));
 }
 
+// REQ-8: an incomplete-dominant homozygote is the distinct "Super" form, a third
+// phenotype tier above wild-type and the single-gene het. Recessive homozygotes
+// are the visual (not a "super"); a dominant super is indistinguishable by name.
+const SUPER_PREFIX = 'Super ';
+
 function collectVisualTraits(
   loci: readonly NormalizedLocus[],
   dictionary: MorphkitDictionary,
@@ -37,13 +42,35 @@ function collectVisualTraits(
   for (const locus of loci) {
     const locusDef = dictionary.loci[locus.locusId];
     if (!locusDef || !isVisualAtLocus(locus.alleles, locusDef.inheritance)) continue;
+    const [a, b] = locus.alleles;
+    if (locusDef.inheritance === 'incomplete_dominant' && a === b && !isNormal(a)) {
+      traits.push(`${SUPER_PREFIX}${locusDef.alleles[a]?.name ?? a}`);
+      continue;
+    }
     // Deduplicate mutant alleles (handles homozygous recessive where both alleles are identical)
-    const mutants = [...new Set(locus.alleles.filter((a) => !isNormal(a)))];
+    const mutants = [...new Set(locus.alleles.filter((x) => !isNormal(x)))];
     for (const alleleId of mutants) {
       traits.push(locusDef.alleles[alleleId]?.name ?? alleleId);
     }
   }
   return traits;
+}
+
+/**
+ * True when every locus condition in `required` is satisfied by `loci`, comparing
+ * each allele pair order-independently. Shared by combo, lethal, and defect-combo
+ * matching.
+ */
+function genotypeMatches(
+  loci: readonly NormalizedLocus[],
+  required: Record<string, [string, string]>,
+): boolean {
+  return Object.entries(required).every(([locusId, [ra, rb]]) => {
+    const locus = loci.find((l) => l.locusId === locusId);
+    if (!locus) return false;
+    const [a, b] = locus.alleles;
+    return (a === ra && b === rb) || (a === rb && b === ra);
+  });
 }
 
 function collectCongenitalWarnings(
@@ -54,11 +81,19 @@ function collectCongenitalWarnings(
   for (const locus of loci) {
     const locusDef = dictionary.loci[locus.locusId];
     if (!locusDef) continue;
+    const [a, b] = locus.alleles;
     for (const alleleId of locus.alleles) {
-      const defects = locusDef.alleles[alleleId]?.defects;
-      if (defects) {
-        for (const d of defects) warnings.add(d);
-      }
+      for (const d of locusDef.alleles[alleleId]?.defects ?? []) warnings.add(d);
+    }
+    // REQ-11: super-only defects fire just in the homozygous-mutant state.
+    if (a === b && !isNormal(a)) {
+      for (const d of locusDef.alleles[a]?.superDefects ?? []) warnings.add(d);
+    }
+  }
+  // REQ-11: combination-triggered congenital defects (e.g. Bug Eyes, Duckbilling).
+  for (const { triggerGenotype, defects } of dictionary.defectCombos ?? []) {
+    if (genotypeMatches(loci, triggerGenotype)) {
+      for (const d of defects) warnings.add(d);
     }
   }
   return [...warnings];
@@ -69,13 +104,7 @@ function isLethalOutcome(
   dictionary: MorphkitDictionary,
 ): boolean {
   return dictionary.lethalCombos.some(({ triggerGenotype }) =>
-    Object.entries(triggerGenotype).every(([locusId, required]) => {
-      const locus = loci.find((l) => l.locusId === locusId);
-      if (!locus) return false;
-      const [ra, rb] = required;
-      const [a, b] = locus.alleles;
-      return (a === ra && b === rb) || (a === rb && b === ra);
-    }),
+    genotypeMatches(loci, triggerGenotype),
   );
 }
 
@@ -84,15 +113,8 @@ function matchCombo(
   loci: readonly NormalizedLocus[],
   dictionary: MorphkitDictionary,
 ): string | undefined {
-  return dictionary.combos.find(({ requiredGenotype }) =>
-    Object.entries(requiredGenotype).every(([locusId, required]) => {
-      const locus = loci.find((l) => l.locusId === locusId);
-      if (!locus) return false;
-      const [ra, rb] = required;
-      const [a, b] = locus.alleles;
-      return (a === ra && b === rb) || (a === rb && b === ra);
-    }),
-  )?.marketName;
+  return dictionary.combos.find(({ requiredGenotype }) => genotypeMatches(loci, requiredGenotype))
+    ?.marketName;
 }
 
 // ---------------------------------------------------------------------------

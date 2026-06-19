@@ -5,6 +5,7 @@ import {
   AggregatedOutcome,
   GenotypeOutcome,
   MorphkitCalculationInput,
+  MorphkitDictionary,
 } from '../src/types';
 import { mockDictionary } from './__mocks__/mockDictionary';
 
@@ -466,5 +467,102 @@ describe('output is sorted by descending probability', () => {
         outcomes[i].decimalProbability,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-8: incomplete-dominant Super tier
+// ---------------------------------------------------------------------------
+
+describe('REQ-8: incomplete-dominant Super tier', () => {
+  function single(locusId: string, alleles: [string, string]): AggregatedOutcome {
+    const g: GenotypeOutcome = { loci: [{ locusId, alleles }], decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), mockDictionary)[0];
+  }
+
+  it('labels a homozygous incomplete-dominant as "Super <name>"', () => {
+    const out = single('black_head_complex', ['black_head', 'black_head']);
+    expect(out.phenotypeNames).toContain('Super Black Head');
+    expect(out.phenotypeNames).not.toContain('Black Head');
+  });
+
+  it('labels the single-gene het with the plain name (no Super)', () => {
+    expect(single('black_head_complex', ['black_head', 'normal']).phenotypeNames).toEqual([
+      'Black Head',
+    ]);
+  });
+
+  it('does not "Super"-prefix a homozygous recessive — it is simply the visual', () => {
+    expect(single('clown_locus', ['clown', 'clown']).phenotypeNames).toEqual(['Clown']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-11: zygosity-conditional defects and defect combos
+// ---------------------------------------------------------------------------
+
+describe('REQ-11: super-only defects and defect combos', () => {
+  const defectDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      sable_locus: {
+        id: 'sable_locus', name: 'Sable', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: {
+          normal: { id: 'normal', name: 'Normal' },
+          sable: { id: 'sable', name: 'Sable', superDefects: ['Neurological Wobble'] },
+        },
+      },
+      bel_locus: {
+        id: 'bel_locus', name: 'BEL', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: { id: 'normal', name: 'Normal' }, lesser: { id: 'lesser', name: 'Lesser' } },
+      },
+      pied_locus: {
+        id: 'pied_locus', name: 'Piebald', inheritance: 'recessive', isSexLinked: false,
+        alleles: { normal: { id: 'normal', name: 'Normal' }, pied: { id: 'pied', name: 'Pied' } },
+      },
+    },
+    defectCombos: [
+      {
+        triggerGenotype: { bel_locus: ['lesser', 'lesser'], pied_locus: ['pied', 'pied'] },
+        defects: ['Bug Eyes'],
+      },
+    ],
+  };
+
+  function warningsFor(loci: GenotypeOutcome['loci']): readonly string[] {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), defectDict)[0].congenitalWarnings;
+  }
+
+  it('does not fire a super-only defect on the single-gene het', () => {
+    expect(warningsFor([{ locusId: 'sable_locus', alleles: ['sable', 'normal'] }])).toEqual([]);
+  });
+
+  it('fires a super-only defect on the homozygous (super) form', () => {
+    expect(warningsFor([{ locusId: 'sable_locus', alleles: ['sable', 'sable'] }])).toContain(
+      'Neurological Wobble',
+    );
+  });
+
+  it('fires a defect combo when the full trigger genotype is present', () => {
+    expect(
+      warningsFor([
+        { locusId: 'bel_locus', alleles: ['lesser', 'lesser'] },
+        { locusId: 'pied_locus', alleles: ['pied', 'pied'] },
+      ]),
+    ).toContain('Bug Eyes');
+  });
+
+  it('does not fire the defect combo when only part of the trigger is present', () => {
+    expect(
+      warningsFor([
+        { locusId: 'bel_locus', alleles: ['lesser', 'lesser'] },
+        { locusId: 'pied_locus', alleles: ['pied', 'normal'] },
+      ]),
+    ).not.toContain('Bug Eyes');
   });
 });
