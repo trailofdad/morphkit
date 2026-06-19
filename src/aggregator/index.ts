@@ -1,5 +1,6 @@
 import {
   AggregatedOutcome,
+  CalculationMode,
   GenotypeOutcome,
   MorphkitDictionary,
   NormalizedBreedingPair,
@@ -15,12 +16,19 @@ function isNormal(alleleId: string): boolean {
   return alleleId === 'normal';
 }
 
-// REQ-3.1: Recessive → visual only if homozygous mutant; dominant/incomplete_dominant/polygenic → visual if any allele is mutant.
-function isVisualAtLocus(alleles: readonly [string, string], inheritance: string): boolean {
+function isHomozygousMutant(alleles: readonly [string, string]): boolean {
   const [a, b] = alleles;
-  if (inheritance === 'recessive') {
-    return !isNormal(a) && !isNormal(b) && a === b;
+  return !isNormal(a) && a === b;
+}
+
+// REQ-3.1 / REQ-13: recessive AND polygenic → visual only if homozygous mutant
+// (a polygenic causal locus is not dominant); dominant/incomplete_dominant →
+// visual if any allele is mutant.
+function isVisualAtLocus(alleles: readonly [string, string], inheritance: string): boolean {
+  if (inheritance === 'recessive' || inheritance === 'polygenic') {
+    return isHomozygousMutant(alleles);
   }
+  const [a, b] = alleles;
   return !isNormal(a) || !isNormal(b);
 }
 
@@ -37,9 +45,17 @@ const SUPER_PREFIX = 'Super ';
 function collectVisualTraits(
   loci: readonly NormalizedLocus[],
   dictionary: MorphkitDictionary,
+  mode: CalculationMode,
 ): string[] {
+  // REQ-13: in diagnostic mode a polygenic group's member loci (DGa/DGb/DGc) do
+  // not express on their own — they are gated below on the group's causal locus.
+  const diagnostic = mode === 'diagnostic';
+  const groups = dictionary.polygenicGroups ?? [];
+  const gatedLoci = diagnostic ? new Set(groups.flatMap((g) => g.loci)) : new Set<string>();
+
   const traits: string[] = [];
   for (const locus of loci) {
+    if (gatedLoci.has(locus.locusId)) continue;
     const locusDef = dictionary.loci[locus.locusId];
     if (!locusDef || !isVisualAtLocus(locus.alleles, locusDef.inheritance)) continue;
     const [a, b] = locus.alleles;
@@ -51,6 +67,17 @@ function collectVisualTraits(
     const mutants = [...new Set(locus.alleles.filter((x) => !isNormal(x)))];
     for (const alleleId of mutants) {
       traits.push(locusDef.alleles[alleleId]?.name ?? alleleId);
+    }
+  }
+
+  // REQ-13 diagnostic gate: a polygenic group is visual only when its causal
+  // locus is homozygous-mutant (DGc); DGa/DGb mutations alone read visually
+  // normal. Standard mode never reaches here and uses the per-locus heuristic.
+  if (diagnostic) {
+    const byId = indexLoci(loci);
+    for (const group of groups) {
+      const causal = byId.get(group.causalLocus);
+      if (causal && isHomozygousMutant(causal.alleles)) traits.push(group.visualLabel);
     }
   }
   return traits;
@@ -172,7 +199,7 @@ export function aggregateOutcomes(
 
   const aggregated = outcomes.map((outcome): AggregatedOutcome => {
     const lociById = indexLoci(outcome.loci);
-    const phenotypeNames = collectVisualTraits(outcome.loci, dictionary);
+    const phenotypeNames = collectVisualTraits(outcome.loci, dictionary, pair.calculationMode);
     const possibleHets: PossibleHet[] = [];
 
     for (const locus of outcome.loci) {

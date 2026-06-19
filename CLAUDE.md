@@ -41,7 +41,7 @@ The engine uses `InheritancePattern` only to detect sex-linked loci (`incomplete
 
 ### Sex-linked contract: the XX/XY model
 
-Sex-linked loci (`isSexLinked: true`) are modeled on the ball python's XX(♀)/XY(♂) system in `buildSexLinkedMatrix`. **Offspring sex is set by which sex chromosome the male contributes** — Y → son, X → daughter — independent of the morph, so every cross has a 1:1 baseline sex ratio. A mutant allele reaches an offspring through whichever sex chromosome (from either parent) carries it.
+Sex-linked loci (`isSexLinked: true`) are modeled on the ball python's XX(♀)/XY(♂) system in `buildSexLinkedDistribution`. **Offspring sex is set by which sex chromosome the male contributes** — Y → son, X → daughter — independent of the morph, so every cross has a 1:1 baseline sex ratio. A mutant allele reaches an offspring through whichever sex chromosome (from either parent) carries it.
 
 Which sex chromosome a *male's* mutant rides is a per-animal fact, not a dictionary property (the same `banana` allele is Male-Maker on the Y or Female-Maker on the X). The input conveys it via the optional `sexChromosomes` array on `LocusInput`, aligned to `alleles` order; when omitted, a male's mutant defaults to the **Y (Male-Maker)**. There is no `_malemaker` id-suffix convention anymore — the dictionary's sex-linked alleles are plain (e.g. `banana`).
 
@@ -53,7 +53,7 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 
 - **`comboName` is rarely undefined.** If no registered `ComboDefinition` matches, the aggregator falls back to the joined `phenotypeNames`; it is undefined only for all-Normal outcomes.
 - **Lethal outcomes are not removed or re-normalized.** `isLethal` flags the outcome, but it stays in `outcomes[]` and still counts toward the 100%. A UI must filter and re-normalize itself for hatch-only percentages.
-- **`calculationMode: 'diagnostic'` and `polygenics` validation are reserved.** `diagnostic` is normalized but never branched on; input `polygenics` are deduplicated and passed through but never validated against `dictionary.polygenicTags`.
+- **`calculationMode: 'diagnostic'` drives polygenic gating; `polygenics` tag validation is still reserved.** In `standard` mode a `polygenic` locus is recessive-like (visual only when homozygous-mutant). In `diagnostic` mode, a `dictionary.polygenicGroups` entry (e.g. Desert Ghost = `dg_a`/`dg_b`/`dg_c`) suppresses its member loci's individual visuals and emits the group's `visualLabel` only when the `causalLocus` is homozygous-mutant. The separate additive `polygenics: string[]` field is still deduplicated and passed through but never validated against `dictionary.polygenicTags`.
 
 ## Non-Negotiable Rules
 

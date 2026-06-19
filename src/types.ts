@@ -354,6 +354,20 @@ export interface DefectComboDefinition {
   defects: string[]; // e.g., ["Bug Eyes"]
 }
 
+/**
+ * A diagnostic polygenic group (e.g. Desert Ghost split into DGa/DGb/DGc). Used
+ * only in `calculationMode: 'diagnostic'`: the group's member loci do not express
+ * individually; the visual fires solely when `causalLocus` is homozygous-mutant.
+ * In standard mode a polygenic trait is modeled as a single recessive-like
+ * pseudo-locus instead, and this registry is ignored.
+ */
+export interface PolygenicGroup {
+  name: string; // e.g., "Desert Ghost"
+  loci: string[]; // the diagnostic causal loci, e.g. ["dg_a", "dg_b", "dg_c"]
+  causalLocus: string; // visual only when this locus is homozygous-mutant, e.g. "dg_c"
+  visualLabel: string; // emitted phenotype when the gate opens, e.g. "Visual Desert Ghost"
+}
+
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
@@ -361,6 +375,7 @@ export interface MorphkitDictionary {
   combos: ComboDefinition[]; // Array of market combos to match against
   lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
   defectCombos?: DefectComboDefinition[]; // Combination-triggered congenital defects
+  polygenicGroups?: PolygenicGroup[]; // Diagnostic-mode polygenic gates (e.g. Desert Ghost)
   polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }
 

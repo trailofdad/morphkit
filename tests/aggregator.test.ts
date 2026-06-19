@@ -566,3 +566,90 @@ describe('REQ-11: super-only defects and defect combos', () => {
     ).not.toContain('Bug Eyes');
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-13: polygenic locus logic (standard) + diagnostic Desert Ghost gate
+// ---------------------------------------------------------------------------
+
+describe('REQ-13: polygenic standard heuristic and diagnostic mode', () => {
+  const allele = (id: string, name: string) => ({ id, name });
+  const dgDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      desert_ghost_complex: {
+        id: 'desert_ghost_complex', name: 'Desert Ghost',
+        inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), desert_ghost: allele('desert_ghost', 'Desert Ghost') },
+      },
+      dg_a: {
+        id: 'dg_a', name: 'DG-A', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dga: allele('dga', 'DG-A') },
+      },
+      dg_b: {
+        id: 'dg_b', name: 'DG-B', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dgb: allele('dgb', 'DG-B') },
+      },
+      dg_c: {
+        id: 'dg_c', name: 'DG-C', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dgc: allele('dgc', 'DG-C') },
+      },
+    },
+    polygenicGroups: [
+      { name: 'Desert Ghost', loci: ['dg_a', 'dg_b', 'dg_c'], causalLocus: 'dg_c', visualLabel: 'Visual Desert Ghost' },
+    ],
+  };
+
+  function phenotypes(loci: GenotypeOutcome['loci'], mode: 'standard' | 'diagnostic'): readonly string[] {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair({ calculationMode: mode }), dgDict)[0].phenotypeNames;
+  }
+
+  // --- Standard mode: a polygenic locus is recessive-like, NOT dominant ---
+
+  it('standard: homozygous polygenic is visual', () => {
+    expect(phenotypes([{ locusId: 'desert_ghost_complex', alleles: ['desert_ghost', 'desert_ghost'] }], 'standard')).toContain(
+      'Desert Ghost',
+    );
+  });
+
+  it('standard: a single-allele polygenic does NOT resolve as a dominant visual', () => {
+    expect(phenotypes([{ locusId: 'desert_ghost_complex', alleles: ['desert_ghost', 'normal'] }], 'standard')).toEqual([]);
+  });
+
+  // --- Diagnostic mode: visual gated on DGc homozygous ---
+
+  it('diagnostic: DGc homozygous-mutant yields "Visual Desert Ghost"', () => {
+    expect(phenotypes([{ locusId: 'dg_c', alleles: ['dgc', 'dgc'] }], 'diagnostic')).toContain(
+      'Visual Desert Ghost',
+    );
+  });
+
+  it('diagnostic: DGc heterozygous is visually normal (gate needs homozygous)', () => {
+    expect(phenotypes([{ locusId: 'dg_c', alleles: ['dgc', 'normal'] }], 'diagnostic')).toEqual([]);
+  });
+
+  it('diagnostic: DGa / DGb mutations alone read visually normal', () => {
+    expect(
+      phenotypes(
+        [
+          { locusId: 'dg_a', alleles: ['dga', 'dga'] },
+          { locusId: 'dg_b', alleles: ['dgb', 'dgb'] },
+          { locusId: 'dg_c', alleles: ['normal', 'normal'] },
+        ],
+        'diagnostic',
+      ),
+    ).toEqual([]);
+  });
+
+  it('diagnostic actually changes output vs standard for the same genotype', () => {
+    const dgaHomo: GenotypeOutcome['loci'] = [{ locusId: 'dg_a', alleles: ['dga', 'dga'] }];
+    // Standard treats DGa as its own recessive-like visual; diagnostic suppresses
+    // it (only DGc gates the phenotype).
+    expect(phenotypes(dgaHomo, 'standard')).toEqual(['DG-A']);
+    expect(phenotypes(dgaHomo, 'diagnostic')).toEqual([]);
+  });
+});
