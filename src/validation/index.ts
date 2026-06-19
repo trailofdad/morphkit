@@ -4,6 +4,7 @@ import {
   CalculationMode,
   LocusInput,
   MorphkitCalculationInput,
+  MorphkitDictionary,
   NormalizedAnimal,
   NormalizedBreedingPair,
   NormalizedLocus,
@@ -20,14 +21,62 @@ import {
  *  - Reject loci with > 2 alleles (REQ-1.4)
  *  - Expand single-allele loci to [allele, "Normal"] (REQ-1.5)
  *  - Inject ["Normal", "Normal"] for loci missing from either animal (REQ-1.6)
+ *
+ * When a `dictionary` is supplied (the pipeline always passes it), MK-1 also
+ * becomes dictionary-aware: it resolves community synonyms to their canonical
+ * allele id (REQ-7) and rejects unknown loci / alleles (REQ-9). Called without a
+ * dictionary, MK-1 stays purely structural — the engine/aggregator unit tests
+ * rely on this dictionary-free mode.
  */
-export function normalizeInput(input: MorphkitCalculationInput): NormalizedBreedingPair {
-  const sire = normalizeAnimal(input.sire, 'sire');
-  const dam = normalizeAnimal(input.dam, 'dam');
+export function normalizeInput(
+  input: MorphkitCalculationInput,
+  dictionary?: MorphkitDictionary,
+): NormalizedBreedingPair {
+  const resolver = dictionary ? buildAlleleResolver(dictionary) : undefined;
+  const sire = normalizeAnimal(input.sire, 'sire', resolver);
+  const dam = normalizeAnimal(input.dam, 'dam', resolver);
   const { sire: symmetricSire, dam: symmetricDam } = ensureLocusSymmetry(sire, dam);
   const calculationMode: CalculationMode = input.calculationMode ?? 'standard';
 
   return { calculationMode, sire: symmetricSire, dam: symmetricDam };
+}
+
+// ---------------------------------------------------------------------------
+// Dictionary-aware allele resolution (REQ-7 aliases, REQ-9 validation)
+// ---------------------------------------------------------------------------
+
+interface AlleleResolver {
+  hasLocus(locusId: string): boolean;
+  /** Canonical allele id for a raw input string, or undefined if unrecognized. */
+  resolveAllele(locusId: string, raw: string): string | undefined;
+}
+
+/**
+ * Indexes the dictionary once so MK-1 can map any of an allele's accepted spellings
+ * — its id, its display name, or any registered `alias` — to the canonical id. A
+ * synthetic `normal` allele is always resolvable (every locus implicitly has it,
+ * and locus symmetry injects it). All keys are lowercased for case-insensitivity.
+ */
+function buildAlleleResolver(dictionary: MorphkitDictionary): AlleleResolver {
+  const locusMaps = new Map<string, Map<string, string>>();
+
+  for (const [locusId, locus] of Object.entries(dictionary.loci)) {
+    const aliasToCanonical = new Map<string, string>();
+    for (const [alleleId, allele] of Object.entries(locus.alleles)) {
+      aliasToCanonical.set(alleleId.toLowerCase(), alleleId);
+      if (allele.name) aliasToCanonical.set(allele.name.toLowerCase(), alleleId);
+      for (const alias of allele.aliases ?? []) {
+        aliasToCanonical.set(alias.toLowerCase(), alleleId);
+      }
+    }
+    aliasToCanonical.set('normal', 'normal');
+    locusMaps.set(locusId.toLowerCase(), aliasToCanonical);
+  }
+
+  return {
+    hasLocus: (locusId) => locusMaps.has(locusId.toLowerCase()),
+    resolveAllele: (locusId, raw) => locusMaps.get(locusId.toLowerCase())?.get(raw.toLowerCase()),
+  };
 }
 
 function requireSex(animal: AnimalInput, role: string): AnimalSex {
@@ -37,15 +86,23 @@ function requireSex(animal: AnimalInput, role: string): AnimalSex {
   return animal.sex;
 }
 
-function normalizeAnimal(animal: AnimalInput, role: string): NormalizedAnimal {
+function normalizeAnimal(
+  animal: AnimalInput,
+  role: string,
+  resolver?: AlleleResolver,
+): NormalizedAnimal {
   const sex = requireSex(animal, role);
   const genotype = animal.genotype.map((locus, i) =>
-    normalizeLocus(locus, `${role}.genotype[${i}]`),
+    normalizeLocus(locus, `${role}.genotype[${i}]`, resolver),
   );
   return { id: animal.id, sex, genotype, polygenics: [...animal.polygenics] };
 }
 
-function normalizeLocus(locus: LocusInput, path: string): NormalizedLocus {
+function normalizeLocus(
+  locus: LocusInput,
+  path: string,
+  resolver?: AlleleResolver,
+): NormalizedLocus {
   if (locus.alleles.length > 2) {
     throw new InvalidGenotypeError(
       `Locus at ${path} has ${locus.alleles.length} alleles; maximum is 2`,
@@ -55,12 +112,34 @@ function normalizeLocus(locus: LocusInput, path: string): NormalizedLocus {
   if (locus.alleles.length === 0) {
     throw new SchemaValidationError(`Locus at ${path} has no alleles; minimum is 1`, path);
   }
+
+  const locusId = locus.locusId.toLowerCase();
+  if (resolver && !resolver.hasLocus(locusId)) {
+    throw new SchemaValidationError(
+      `Unknown locus "${locusId}" at ${path} — not present in the dictionary`,
+      locusId,
+    );
+  }
+
+  const resolve = (raw: string): string => {
+    const lowered = raw.toLowerCase();
+    if (!resolver) return lowered;
+    const canonical = resolver.resolveAllele(locusId, lowered);
+    if (canonical === undefined) {
+      throw new InvalidGenotypeError(
+        `Unknown allele "${lowered}" for locus "${locusId}" at ${path}`,
+        locusId,
+      );
+    }
+    return canonical;
+  };
+
   const alleles: [string, string] =
     locus.alleles.length === 2
-      ? [locus.alleles[0].toLowerCase(), locus.alleles[1].toLowerCase()]
-      : [locus.alleles[0].toLowerCase(), 'normal'];
+      ? [resolve(locus.alleles[0]), resolve(locus.alleles[1])]
+      : [resolve(locus.alleles[0]), 'normal'];
 
-  return { locusId: locus.locusId.toLowerCase(), alleles };
+  return { locusId, alleles };
 }
 
 function ensureLocusSymmetry(

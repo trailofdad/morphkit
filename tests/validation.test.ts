@@ -1,6 +1,7 @@
 import { normalizeInput } from '../src/validation';
 import {
   MorphkitCalculationInput,
+  MorphkitDictionary,
   InvalidGenotypeError,
   SchemaValidationError,
 } from '../src/types';
@@ -401,5 +402,111 @@ describe('output shape', () => {
 
     expect(original.sire.genotype).toHaveLength(originalGenotypeLength);
     expect(original.dam.genotype).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-7 + REQ-9 — dictionary-aware alias resolution and validation (MK-1)
+// ---------------------------------------------------------------------------
+
+describe('dictionary-aware MK-1 (aliases + validation)', () => {
+  const dict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      albino_complex: {
+        id: 'albino_complex',
+        name: 'Albino',
+        inheritance: 'recessive',
+        isSexLinked: false,
+        alleles: {
+          normal: { id: 'normal', name: 'Normal' },
+          candy: { id: 'candy', name: 'Candy', aliases: ['Toffee'] },
+        },
+      },
+    },
+  };
+
+  function sireGenotype(input: MorphkitCalculationInput, locusId: string) {
+    return normalizeInput(input, dict).sire.genotype.find((l) => l.locusId === locusId);
+  }
+
+  it('resolves a synonym (Toffee) to its canonical allele id (candy)', () => {
+    const locus = sireGenotype(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'albino_complex', alleles: ['Toffee', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      'albino_complex',
+    );
+    expect(locus?.alleles).toEqual(['candy', 'normal']);
+  });
+
+  it('merges a synonym + canonical into a homozygote (Toffee × Candy → [candy, candy])', () => {
+    const locus = sireGenotype(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'albino_complex', alleles: ['Toffee', 'Candy'] }],
+          polygenics: [],
+        },
+      }),
+      'albino_complex',
+    );
+    expect(locus?.alleles).toEqual(['candy', 'candy']);
+  });
+
+  it('throws SchemaValidationError for an unknown locus', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'made_up_locus', alleles: ['whatever'] }],
+            polygenics: [],
+          },
+        }),
+        dict,
+      ),
+    ).toThrow(SchemaValidationError);
+  });
+
+  it('throws InvalidGenotypeError for an allele not defined on its locus', () => {
+    try {
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'albino_complex', alleles: ['spider', 'normal'] }],
+            polygenics: [],
+          },
+        }),
+        dict,
+      );
+      fail('expected InvalidGenotypeError');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidGenotypeError);
+      expect((err as InvalidGenotypeError).locusId).toBe('albino_complex');
+    }
+  });
+
+  it('without a dictionary, passes through unknown loci/alleles (backward compatible)', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'made_up_locus', alleles: ['whatever'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'made_up_locus');
+    expect(locus?.alleles).toEqual(['whatever', 'normal']);
   });
 });

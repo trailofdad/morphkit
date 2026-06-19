@@ -40,7 +40,7 @@ export function runCalculationPipeline(
   input: MorphkitCalculationInput,
   dictionary: MorphkitDictionary,
 ): MorphkitCalculationOutput {
-  const normalizedPair = normalizeInput(input);
+  const normalizedPair = normalizeInput(input, dictionary);
   const cdnDictionary = deriveCdnDictionary(dictionary);
   const genotypeOutcomes = computePunnettMatrix(normalizedPair, cdnDictionary);
   const aggregatedOutcomes = aggregateOutcomes(genotypeOutcomes, normalizedPair, dictionary);

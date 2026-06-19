@@ -22,7 +22,7 @@ The pipeline has six layers with strict responsibility boundaries. Data flows le
 
 | Layer | Path | Role |
 |---|---|---|
-| MK-1 | `src/validation/` | Normalizes `MorphkitCalculationInput` → `NormalizedBreedingPair`. Fills implicit single-allele loci to `[allele, "normal"]`; **lowercases every locusId and allele**; injects `["normal", "normal"]` for any locus present on only one parent (locus symmetry) |
+| MK-1 | `src/validation/` | Normalizes `MorphkitCalculationInput` → `NormalizedBreedingPair`. Fills implicit single-allele loci to `[allele, "normal"]`; **lowercases every locusId and allele**; injects `["normal", "normal"]` for any locus present on only one parent (locus symmetry). **Dictionary-aware when one is passed** (the pipeline always passes it): resolves allele synonyms/aliases → canonical id, throws `SchemaValidationError` for an unknown locus and `InvalidGenotypeError` for an allele not defined on its locus. Called without a dictionary it is purely structural (unit tests rely on this) |
 | MK-2 | `src/engine/` | Cartesian Punnett Matrix — pure root-allele math, outputs `GenotypeOutcome[]`; verifies Hardy-Weinberg sum = 1.0 |
 | MK-3/4 | `src/aggregator/` | Translates genotypes → phenotypes, resolves combo names (e.g. "Freeway"), computes `PossibleHet[]`, flags lethality and congenital defects → `AggregatedOutcome[]` |
 | MK-5 | `src/worker/` | Web Worker wrapper, message routing, and synchronous pipeline orchestration (`pipeline.ts`); main thread passes the dictionary here as a payload |
