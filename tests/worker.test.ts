@@ -9,7 +9,7 @@ import {
   WorkerSuccessMessage,
 } from '../src/types';
 import { runCalculationPipeline } from '../src/worker/pipeline';
-import { calculateMorphsAsync } from '../src/index';
+import { calculateMorphs, calculateMorphsAsync } from '../src/index';
 import { mockDictionary } from './__mocks__/mockDictionary';
 
 // ---------------------------------------------------------------------------
@@ -177,6 +177,36 @@ describe('runCalculationPipeline', () => {
       return locus?.alleles[0] === 'spider' && locus?.alleles[1] === 'spider';
     });
     expect(lethal?.isLethal).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2: calculateMorphs — synchronous public entry point (no Worker plumbing)
+// ---------------------------------------------------------------------------
+
+describe('calculateMorphs (synchronous export)', () => {
+  it('returns a MorphkitCalculationOutput directly, without a Worker', () => {
+    const result = calculateMorphs(clownHetInput(), mockDictionary);
+    expect(result).toHaveProperty('outcomes');
+    expect(result).toHaveProperty('normalizedInput');
+    expect(result).toHaveProperty('calculatedAt');
+    expect(Array.isArray(result.outcomes)).toBe(true);
+  });
+
+  it('produces identical outcomes to the worker path for the same input', async () => {
+    const sync = calculateMorphs(clownHetInput(), mockDictionary);
+    const viaWorker = await calculateMorphsAsync(clownHetInput(), mockDictionary, 'mock://worker');
+    // calculatedAt differs (timestamp); the genetic result must not.
+    expect(sync.outcomes).toEqual(viaWorker.outcomes);
+    expect(sync.normalizedInput).toEqual(viaWorker.normalizedInput);
+  });
+
+  it('throws typed errors directly (no serialization roundtrip)', () => {
+    const badInput = {
+      sire: { id: 'sire', genotype: [], polygenics: [] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    } as unknown as MorphkitCalculationInput;
+    expect(() => calculateMorphs(badInput, mockDictionary)).toThrow(SchemaValidationError);
   });
 });
 

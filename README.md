@@ -107,6 +107,21 @@ for (const outcome of result.outcomes) {
 // 25%   Normal   []
 ```
 
+#### Synchronous vs. worker
+
+There are two entry points; both run the **same** MK-1 → MK-2 → MK-3/4 pipeline:
+
+| Function | Threading | Use when |
+|---|---|---|
+| `calculateMorphs(input, dictionary)` | Synchronous, on the calling thread. Returns the output directly and throws typed errors directly. | SSR, Node scripts, unit tests, and lightweight clients — especially cheap recalcs on each keystroke where worker startup would dominate. No `workerUrl` or bundler plumbing. |
+| `calculateMorphsAsync(input, dictionary, workerUrl)` | Off the main thread in a Web Worker; returns a `Promise`. | Large multi-gene crosses where you want the computation off the UI thread. Requires a bundled worker (`workerUrl`). |
+
+```ts
+import { calculateMorphs } from '@trailofdad/morphkit';
+
+const result = calculateMorphs(input, dictionary); // no Promise, no worker
+```
+
 Each `AggregatedOutcome` contains:
 
 | Field | Description |

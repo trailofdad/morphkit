@@ -8,6 +8,7 @@ import {
   WorkerCalculateMessage,
   WorkerOutboundMessage,
 } from './types';
+import { runCalculationPipeline } from './worker/pipeline';
 
 // Minimal worker interface typed here so src/index.ts compiles without the
 // WebWorker lib, which is dropped in the Jest/Node test environment.
@@ -26,6 +27,27 @@ function spawnWorker(url: URL | string): BrowserWorker {
     options?: { type?: string },
   ) => BrowserWorker;
   return new WorkerCtor(url, { type: 'module' });
+}
+
+/**
+ * Executes the full Morphkit pipeline (MK-1 → MK-2 → MK-3/4) synchronously on
+ * the calling thread and returns the result directly. No Web Worker, no
+ * `workerUrl`, no bundler plumbing — suitable for SSR, Node scripts, unit tests,
+ * and cheap client-side recalculations.
+ *
+ * Prefer {@link calculateMorphsAsync} when you want a large cross to run
+ * off the main thread; otherwise this is the simplest entry point. Throws the
+ * same typed errors the worker path serializes (`SchemaValidationError`,
+ * `InvalidGenotypeError`, `CartesianMatrixError`) — catch them directly.
+ *
+ * @param input - The breeding pair and calculation settings.
+ * @param dictionary - The MorphkitDictionary fetched by the caller.
+ */
+export function calculateMorphs(
+  input: MorphkitCalculationInput,
+  dictionary: MorphkitDictionary,
+): MorphkitCalculationOutput {
+  return runCalculationPipeline(input, dictionary);
 }
 
 /**
