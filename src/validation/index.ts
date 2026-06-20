@@ -2,6 +2,7 @@ import {
   AnimalInput,
   AnimalSex,
   CalculationMode,
+  CalculationWarning,
   LocusInput,
   MorphkitCalculationInput,
   MorphkitDictionary,
@@ -77,6 +78,35 @@ function buildAlleleResolver(dictionary: MorphkitDictionary): AlleleResolver {
     hasLocus: (locusId) => locusMaps.has(locusId.toLowerCase()),
     resolveAllele: (locusId, raw) => locusMaps.get(locusId.toLowerCase())?.get(raw.toLowerCase()),
   };
+}
+
+/**
+ * Soft data-hygiene check (issue #20): the additive `polygenics` are descriptive
+ * free-text tags that carry no genetics, so an unknown one must **not** throw the
+ * way an unknown locus/allele does. Instead, compare each tag (case-insensitive)
+ * against the dictionary's canonical `polygenicTags` and emit one advisory per
+ * unknown tag. Tags are deduplicated across both parents — a tag carried by sire
+ * and dam warns once — and the genetic result is never affected.
+ */
+export function collectPolygenicWarnings(
+  pair: NormalizedBreedingPair,
+  dictionary: MorphkitDictionary,
+): CalculationWarning[] {
+  const known = new Set(dictionary.polygenicTags.map((t) => t.toLowerCase()));
+  const seen = new Set<string>();
+  const warnings: CalculationWarning[] = [];
+  for (const animal of [pair.sire, pair.dam]) {
+    for (const tag of animal.polygenics) {
+      const key = tag.toLowerCase();
+      if (known.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      warnings.push({
+        code: 'unknown_polygenic_tag',
+        message: `Unknown polygenic tag "${tag}" — not present in the dictionary's polygenicTags`,
+      });
+    }
+  }
+  return warnings;
 }
 
 function requireSex(animal: AnimalInput, role: string): AnimalSex {

@@ -129,6 +129,8 @@ export type {
   AnimalInput,
   AnimalSex,
   CalculationMode,
+  CalculationWarning,
+  CalculationWarningCode,
   GenotypeOutcome,
   LocusInput,
   MorphkitCalculationInput,

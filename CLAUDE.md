@@ -53,7 +53,8 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 
 - **`comboName` is rarely undefined.** If no registered `ComboDefinition` matches, the aggregator falls back to the joined `phenotypeNames`; it is undefined only for all-Normal outcomes.
 - **Lethal outcomes are not removed or re-normalized.** `isLethal` flags the outcome, but it stays in `outcomes[]` and still counts toward the 100%. A UI must filter and re-normalize itself for hatch-only percentages.
-- **`calculationMode: 'diagnostic'` drives polygenic gating; `polygenics` tag validation is still reserved.** In `standard` mode a `polygenic` locus is recessive-like (visual only when homozygous-mutant). In `diagnostic` mode, a `dictionary.polygenicGroups` entry (e.g. Desert Ghost = `dg_a`/`dg_b`/`dg_c`) suppresses its member loci's individual visuals and emits the group's `visualLabel` only when the `causalLocus` is homozygous-mutant. The separate additive `polygenics: string[]` field is still deduplicated and passed through but never validated against `dictionary.polygenicTags`.
+- **`calculationMode: 'diagnostic'` drives polygenic gating; the additive `polygenics` field is soft-validated.** In `standard` mode a `polygenic` locus is recessive-like (visual only when homozygous-mutant). In `diagnostic` mode, a `dictionary.polygenicGroups` entry (e.g. Desert Ghost = `dg_a`/`dg_b`/`dg_c`) suppresses its member loci's individual visuals and emits the group's `visualLabel` only when the `causalLocus` is homozygous-mutant. The separate additive `polygenics: string[]` field is still deduplicated and passed through onto every outcome; the pipeline (`collectPolygenicWarnings`, MK-1) now also compares each tag case-insensitively against `dictionary.polygenicTags` and emits a non-fatal `CalculationWarning` (`code: 'unknown_polygenic_tag'`) for any unknown tag — it is never dropped or thrown, and the genetic result is unaffected.
+- **`MorphkitCalculationOutput.warnings` is the soft-diagnostics channel.** Always present (empty when clean): a `readonly CalculationWarning[]` of `{ code, message }`. Distinct from the simple tier's per-morph `MorphResolution[]` (name resolution) — this one carries advisories raised by the genetic pipeline itself.
 
 ## Non-Negotiable Rules
 
@@ -73,7 +74,7 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 - `NormalizedBreedingPair` → MK-1 output; each `NormalizedLocus` has exactly `[string, string]` alleles
 - `GenotypeOutcome` → MK-2 output; includes `decimalProbability` and optional `sex`
 - `AggregatedOutcome` → final output per offspring: `phenotypeNames`, `comboName?`, `possibleHets`, `isLethal`, `congenitalWarnings`, `percentageProbability`
-- `MorphkitCalculationOutput` → wraps `outcomes[]`, `normalizedInput`, `calculatedAt`
+- `MorphkitCalculationOutput` → wraps `outcomes[]`, `normalizedInput`, `warnings[]` (non-fatal `CalculationWarning`s, empty when clean), `calculatedAt`
 
 ## Typed Errors (src/types.ts)
 

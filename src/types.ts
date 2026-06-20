@@ -248,6 +248,22 @@ export interface AggregatedOutcome {
   readonly polygenics: readonly string[];
 }
 
+/** Machine-readable discriminant for a non-fatal {@link CalculationWarning}. */
+export type CalculationWarningCode = 'unknown_polygenic_tag';
+
+/**
+ * A non-fatal advisory emitted by the calculation pipeline. Unlike the typed
+ * errors (which abort the calculation), a warning never changes the genetic
+ * result — it flags a data-hygiene issue a UI may want to surface, e.g. an
+ * unknown free-text polygenic tag. `code` is a stable machine-readable
+ * discriminant; `message` is human-readable. This is the soft sibling of MK-1's
+ * hard locus/allele rejection and the single home for future soft diagnostics.
+ */
+export interface CalculationWarning {
+  readonly code: CalculationWarningCode;
+  readonly message: string;
+}
+
 /**
  * The final output of the Morphkit engine.
  * AC-4: explicitly exported.
@@ -257,6 +273,12 @@ export interface MorphkitCalculationOutput {
   readonly outcomes: readonly AggregatedOutcome[];
   /** The input pair that produced these results, after normalization. */
   readonly normalizedInput: NormalizedBreedingPair;
+  /**
+   * Non-fatal advisories raised during the calculation (e.g. an unknown
+   * polygenic tag). Empty when none. Advisory only — the genetic result in
+   * `outcomes` is unaffected.
+   */
+  readonly warnings: readonly CalculationWarning[];
   /** ISO timestamp of when this calculation was performed. */
   readonly calculatedAt: string;
 }

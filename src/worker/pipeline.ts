@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { aggregateOutcomes } from '../aggregator';
 import { computePunnettMatrix, validateHardyWeinberg } from '../engine';
-import { normalizeInput } from '../validation';
+import { collectPolygenicWarnings, normalizeInput } from '../validation';
 
 /**
  * Maps MorphkitDictionary → CdnDictionary for MK-2.
@@ -161,6 +161,7 @@ export function runCalculationPipeline(
   return {
     outcomes: aggregatedOutcomes,
     normalizedInput: normalizedPair,
+    warnings: collectPolygenicWarnings(normalizedPair, dictionary),
     calculatedAt: new Date().toISOString(),
   };
 }
