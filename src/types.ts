@@ -8,11 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Inheritance pattern for a locus — used by MK-2 via CDN Dictionary lookup. */
-export type InheritancePattern =
-  | 'recessive'
-  | 'dominant'
-  | 'co-dominant'
-  | 'sex-linked';
+export type InheritancePattern = 'recessive' | 'dominant' | 'co-dominant' | 'sex-linked';
 
 /** The sex of an animal, used for sex-linked locus calculations. */
 export type AnimalSex = 'male' | 'female';
@@ -48,6 +44,25 @@ export type CdnDictionary = readonly LocusDictionaryEntry[];
 export interface LocusInput {
   readonly locusId: string;
   readonly alleles: readonly string[];
+  /**
+   * Sex-linked loci only: which sex chromosome each entry in `alleles` rides, in
+   * the same order. Meaningful on the heterogametic (male) parent — e.g. alleles
+   * `['banana','normal']` with `['Y','X']` is a Male-Maker (banana on the Y);
+   * `['X','Y']` is a Female-Maker (banana on the X). When omitted, a male's
+   * mutant allele defaults to the Y (Male-Maker). Ignored for autosomal loci and
+   * for females (both alleles ride an X).
+   */
+  readonly sexChromosomes?: readonly ('X' | 'Y')[];
+  /**
+   * Carrier zygosity when the locus is stated with a single mutant allele:
+   * `'het'` is a proven heterozygote (`[allele, normal]`); `'pos_het'` is a
+   * possible (unproven) carrier, for which the engine produces the probabilistic
+   * offspring distribution weighted by `carrierProbability`. A DNA-proven positive
+   * is expressed as `'het'`; a proven negative by omitting the locus.
+   */
+  readonly zygosity?: 'het' | 'pos_het';
+  /** Carrier probability for a `'pos_het'` locus, 0–1. Defaults to 0.5. */
+  readonly carrierProbability?: number;
 }
 
 /** Represents one animal in the breeding pair as provided by the caller. */
@@ -71,6 +86,55 @@ export interface MorphkitCalculationInput {
 }
 
 // ---------------------------------------------------------------------------
+// Simple API tier — name-resolution front-end (desugars to MorphkitCalculationInput)
+// ---------------------------------------------------------------------------
+
+/**
+ * One animal in the simple tier: a flat list of morph names instead of an
+ * explicit per-locus genotype. The resolver infers each name's genotype from the
+ * dictionary's inheritance pattern (see `resolveSimpleInput`).
+ */
+export interface SimpleAnimalInput {
+  readonly id: string;
+  /** MK-1 still requires sex once the pipeline runs; carried through unchanged. */
+  readonly sex?: AnimalSex;
+  /** Flat morph names, e.g. ["Pastel", "Het Clown", "Super Cinnamon", "Freeway"]. */
+  readonly morphs: readonly string[];
+  readonly polygenics?: readonly string[];
+}
+
+/** Top-level simple-tier input — the name-list analogue of MorphkitCalculationInput. */
+export interface SimpleCalculationInput {
+  readonly calculationMode?: CalculationMode;
+  readonly sire: SimpleAnimalInput;
+  readonly dam: SimpleAnimalInput;
+}
+
+/**
+ * The per-morph result of name resolution. A UI can surface exactly which inputs
+ * were ambiguous or unresolved (`resolved: false` and/or a `message`). Resolved
+ * morphs carry the `locusId` and `alleles` they desugared to (before locus
+ * merging); combo names that span multiple loci omit those two fields.
+ */
+export interface MorphResolution {
+  /** The original morph string supplied by the caller. */
+  readonly input: string;
+  /** Which parent the morph belonged to (warnings from both parents share one array). */
+  readonly parent: 'sire' | 'dam';
+  readonly locusId?: string;
+  readonly alleles?: [string, string];
+  readonly resolved: boolean;
+  /** Present for ambiguous, unknown, or informational (dominant/super) cases. */
+  readonly message?: string;
+}
+
+/** Output of `resolveSimpleInput`: a complex input plus the per-morph resolution log. */
+export interface SimpleResolution {
+  readonly input: MorphkitCalculationInput;
+  readonly warnings: MorphResolution[];
+}
+
+// ---------------------------------------------------------------------------
 // Normalized Breeding Pair — output of MK-1 Validation
 // ---------------------------------------------------------------------------
 
@@ -83,6 +147,19 @@ export interface NormalizedLocus {
   readonly locusId: string;
   /** Exactly 2 alleles — e.g., ["Clown", "Normal"] or ["Clown", "Clown"]. */
   readonly alleles: [string, string];
+  /**
+   * Sex chromosome each allele rides, same order as `alleles`. Carried from a
+   * sex-linked input on the heterogametic parent; the engine uses it to route
+   * the Y-borne allele to sons and the X-borne allele to daughters. Absent on
+   * autosomal loci and on the homogametic (female) parent.
+   */
+  readonly sexChromosomes?: readonly ['X' | 'Y', 'X' | 'Y'];
+  /**
+   * Present when the locus came in as `'pos_het'`. The pipeline expands it into a
+   * carrier (`[allele, normal]`) vs non-carrier (`[normal, normal]`) mixture
+   * weighted by this probability before running the Punnett matrix.
+   */
+  readonly carrierProbability?: number;
 }
 
 /** One animal after MK-1 normalization. */
@@ -149,7 +226,11 @@ export interface AggregatedOutcome {
   readonly genotype: GenotypeOutcome;
   /** The resolved visual phenotype name(s), e.g. ["Pastel", "Clown"]. */
   readonly phenotypeNames: readonly PhenotypeName[];
-  /** The combined combo name if one is registered, e.g. "Freeway". */
+  /**
+   * The market combo name when a registered ComboDefinition matches; otherwise
+   * the joined phenotypeNames (e.g. "Pastel Clown"). Undefined only for
+   * all-Normal outcomes.
+   */
   readonly comboName?: PhenotypeName;
   /** Fractional probability, mirrored from the genotype for convenience. */
   readonly decimalProbability: number;
@@ -222,24 +303,39 @@ export class CartesianMatrixError extends Error {
 
 // --- DICTIONARY TYPES ---
 
-export type InheritanceType = "recessive" | "dominant" | "incomplete_dominant" | "polygenic";
+export type InheritanceType = 'recessive' | 'dominant' | 'incomplete_dominant' | 'polygenic';
 
 export interface AlleleDefinition {
-  id: string;             // e.g., "spider", "banana_malemaker"
-  name: string;           // e.g., "Spider", "Banana (Male Maker)"
-  defects?: string[];     // e.g., ["Neurological Wobble"]
+  id: string; // e.g., "spider", "banana_malemaker"
+  name: string; // e.g., "Spider", "Banana (Male Maker)"
+  defects?: string[]; // fires het or homozygous, e.g. ["Neurological Wobble"]
+  /** Defects that fire only in the homozygous (super) state, e.g. Super Sable wobble. */
+  superDefects?: string[];
+  /** Community synonyms / abbreviations for this allele, e.g. ["HGW"]. */
+  aliases?: string[];
+  /** Very short labels for tub tags or printing, e.g. ["Past"]. */
+  shortNames?: string[];
+  /**
+   * IDs of other alleles at THIS SAME locus that are visually indistinguishable
+   * from this one in the single-gene state (e.g. asphalt ↔ gravel ↔ yellowbelly).
+   */
+  indistinctFrom?: string[];
 }
 
 export interface LocusDefinition {
-  id: string;                     // e.g., "yellowbelly_complex"
-  name: string;                   // e.g., "Yellowbelly Complex"
+  id: string; // e.g., "yellowbelly_complex"
+  name: string; // e.g., "Yellowbelly Complex"
   inheritance: InheritanceType;
-  isSexLinked: boolean;           // True for Banana/Coral Glow
+  isSexLinked: boolean; // True for Banana/Coral Glow
   alleles: Record<string, AlleleDefinition>; // O(1) lookup map of alleles at this locus
 }
 
 export interface ComboDefinition {
-  marketName: string;             // e.g., "Freeway"
+  marketName: string; // e.g., "Freeway"
+  /** Alternative community names for this combo. */
+  aliases?: string[];
+  /** Very short labels for tub tags or printing. */
+  shortNames?: string[];
   // Map of locusId to required alleles.
   // e.g., { "yellowbelly_complex": ["yellowbelly", "asphalt"] }
   requiredGenotype: Record<string, [string, string]>;
@@ -251,13 +347,68 @@ export interface LethalComboDefinition {
   triggerGenotype: Record<string, [string, string]>;
 }
 
+export interface DefectComboDefinition {
+  // Loci conditions that trigger a congenital defect (not lethal), e.g. "Bug Eyes"
+  // from a BEL-super × Piebald, or "Duckbilling" from Super Cinnamon.
+  triggerGenotype: Record<string, [string, string]>;
+  defects: string[]; // e.g., ["Bug Eyes"]
+}
+
+/**
+ * A diagnostic polygenic group (e.g. Desert Ghost split into DGa/DGb/DGc). Used
+ * only in `calculationMode: 'diagnostic'`: the group's member loci do not express
+ * individually; the visual fires solely when `causalLocus` is homozygous-mutant.
+ * In standard mode a polygenic trait is modeled as a single recessive-like
+ * pseudo-locus instead, and this registry is ignored.
+ */
+export interface PolygenicGroup {
+  name: string; // e.g., "Desert Ghost"
+  loci: string[]; // the diagnostic causal loci, e.g. ["dg_a", "dg_b", "dg_c"]
+  causalLocus: string; // visual only when this locus is homozygous-mutant, e.g. "dg_c"
+  visualLabel: string; // emitted phenotype when the gate opens, e.g. "Visual Desert Ghost"
+}
+
+/** One locus condition in an epistasis rule. */
+export interface EpistasisLocusCondition {
+  locusId: string;
+  /**
+   * `'present'` matches ≥1 copy of `allele` (or any mutant allele if `allele` is
+   * omitted); `'homozygous'` matches when both alleles are non-normal (the super /
+   * compound state), restricted to `allele` when given.
+   */
+  state: 'present' | 'homozygous';
+  allele?: string;
+}
+
+/**
+ * An epistatic visual-masking rule: when every condition holds, the named visual
+ * traits from `suppressLoci` (or all traits, if `suppressAll`) are removed and
+ * `label` is emitted instead. Only the **visual** phenotype is affected — the
+ * underlying genotype and congenital warnings are untouched, so downstream-
+ * generation crosses and safety flags stay correct. Examples: a BEL-super solid-
+ * white masking an unlinked Pastel; a Black Head Spider compound reading visually
+ * near-normal.
+ */
+export interface EpistasisRule {
+  name: string; // e.g., "Black Head Spider"
+  conditions: EpistasisLocusCondition[];
+  /** Loci whose visual names are removed when the rule fires. Defaults to the condition loci. */
+  suppressLoci?: string[];
+  /** When true, removes ALL visual names (a solid-white BEL masks everything). */
+  suppressAll?: boolean;
+  label: string; // the phenotype emitted in place of the masked traits
+}
+
 export interface MorphkitDictionary {
   version: string;
   lastUpdated: string;
-  loci: Record<string, LocusDefinition>;           // O(1) Locus lookup
-  combos: ComboDefinition[];                       // Array of market combos to match against
-  lethalCombos: LethalComboDefinition[];           // Array of unviable genetic states
-  polygenicTags: string[];                         // Valid known polygenics (e.g., "Jungle")
+  loci: Record<string, LocusDefinition>; // O(1) Locus lookup
+  combos: ComboDefinition[]; // Array of market combos to match against
+  lethalCombos: LethalComboDefinition[]; // Array of unviable genetic states
+  defectCombos?: DefectComboDefinition[]; // Combination-triggered congenital defects
+  epistasisRules?: EpistasisRule[]; // Visual-masking overrides (BEL white, Black Head Spider)
+  polygenicGroups?: PolygenicGroup[]; // Diagnostic-mode polygenic gates (e.g. Desert Ghost)
+  polygenicTags: string[]; // Valid known polygenics (e.g., "Jungle")
 }
 
 // ---------------------------------------------------------------------------

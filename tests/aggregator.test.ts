@@ -5,6 +5,7 @@ import {
   AggregatedOutcome,
   GenotypeOutcome,
   MorphkitCalculationInput,
+  MorphkitDictionary,
 } from '../src/types';
 import { mockDictionary } from './__mocks__/mockDictionary';
 
@@ -466,5 +467,301 @@ describe('output is sorted by descending probability', () => {
         outcomes[i].decimalProbability,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-8: incomplete-dominant Super tier
+// ---------------------------------------------------------------------------
+
+describe('REQ-8: incomplete-dominant Super tier', () => {
+  function single(locusId: string, alleles: [string, string]): AggregatedOutcome {
+    const g: GenotypeOutcome = { loci: [{ locusId, alleles }], decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), mockDictionary)[0];
+  }
+
+  it('labels a homozygous incomplete-dominant as "Super <name>"', () => {
+    const out = single('black_head_complex', ['black_head', 'black_head']);
+    expect(out.phenotypeNames).toContain('Super Black Head');
+    expect(out.phenotypeNames).not.toContain('Black Head');
+  });
+
+  it('labels the single-gene het with the plain name (no Super)', () => {
+    expect(single('black_head_complex', ['black_head', 'normal']).phenotypeNames).toEqual([
+      'Black Head',
+    ]);
+  });
+
+  it('does not "Super"-prefix a homozygous recessive — it is simply the visual', () => {
+    expect(single('clown_locus', ['clown', 'clown']).phenotypeNames).toEqual(['Clown']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-11: zygosity-conditional defects and defect combos
+// ---------------------------------------------------------------------------
+
+describe('REQ-11: super-only defects and defect combos', () => {
+  const defectDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      sable_locus: {
+        id: 'sable_locus', name: 'Sable', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: {
+          normal: { id: 'normal', name: 'Normal' },
+          sable: { id: 'sable', name: 'Sable', superDefects: ['Neurological Wobble'] },
+        },
+      },
+      bel_locus: {
+        id: 'bel_locus', name: 'BEL', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: { id: 'normal', name: 'Normal' }, lesser: { id: 'lesser', name: 'Lesser' } },
+      },
+      pied_locus: {
+        id: 'pied_locus', name: 'Piebald', inheritance: 'recessive', isSexLinked: false,
+        alleles: { normal: { id: 'normal', name: 'Normal' }, pied: { id: 'pied', name: 'Pied' } },
+      },
+    },
+    defectCombos: [
+      {
+        triggerGenotype: { bel_locus: ['lesser', 'lesser'], pied_locus: ['pied', 'pied'] },
+        defects: ['Bug Eyes'],
+      },
+    ],
+  };
+
+  function warningsFor(loci: GenotypeOutcome['loci']): readonly string[] {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), defectDict)[0].congenitalWarnings;
+  }
+
+  it('does not fire a super-only defect on the single-gene het', () => {
+    expect(warningsFor([{ locusId: 'sable_locus', alleles: ['sable', 'normal'] }])).toEqual([]);
+  });
+
+  it('fires a super-only defect on the homozygous (super) form', () => {
+    expect(warningsFor([{ locusId: 'sable_locus', alleles: ['sable', 'sable'] }])).toContain(
+      'Neurological Wobble',
+    );
+  });
+
+  it('fires a defect combo when the full trigger genotype is present', () => {
+    expect(
+      warningsFor([
+        { locusId: 'bel_locus', alleles: ['lesser', 'lesser'] },
+        { locusId: 'pied_locus', alleles: ['pied', 'pied'] },
+      ]),
+    ).toContain('Bug Eyes');
+  });
+
+  it('does not fire the defect combo when only part of the trigger is present', () => {
+    expect(
+      warningsFor([
+        { locusId: 'bel_locus', alleles: ['lesser', 'lesser'] },
+        { locusId: 'pied_locus', alleles: ['pied', 'normal'] },
+      ]),
+    ).not.toContain('Bug Eyes');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-13: polygenic locus logic (standard) + diagnostic Desert Ghost gate
+// ---------------------------------------------------------------------------
+
+describe('REQ-13: polygenic standard heuristic and diagnostic mode', () => {
+  const allele = (id: string, name: string) => ({ id, name });
+  const dgDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      desert_ghost_complex: {
+        id: 'desert_ghost_complex', name: 'Desert Ghost',
+        inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), desert_ghost: allele('desert_ghost', 'Desert Ghost') },
+      },
+      dg_a: {
+        id: 'dg_a', name: 'DG-A', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dga: allele('dga', 'DG-A') },
+      },
+      dg_b: {
+        id: 'dg_b', name: 'DG-B', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dgb: allele('dgb', 'DG-B') },
+      },
+      dg_c: {
+        id: 'dg_c', name: 'DG-C', inheritance: 'polygenic', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), dgc: allele('dgc', 'DG-C') },
+      },
+    },
+    polygenicGroups: [
+      { name: 'Desert Ghost', loci: ['dg_a', 'dg_b', 'dg_c'], causalLocus: 'dg_c', visualLabel: 'Visual Desert Ghost' },
+    ],
+  };
+
+  function phenotypes(loci: GenotypeOutcome['loci'], mode: 'standard' | 'diagnostic'): readonly string[] {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair({ calculationMode: mode }), dgDict)[0].phenotypeNames;
+  }
+
+  // --- Standard mode: a polygenic locus is recessive-like, NOT dominant ---
+
+  it('standard: homozygous polygenic is visual', () => {
+    expect(phenotypes([{ locusId: 'desert_ghost_complex', alleles: ['desert_ghost', 'desert_ghost'] }], 'standard')).toContain(
+      'Desert Ghost',
+    );
+  });
+
+  it('standard: a single-allele polygenic does NOT resolve as a dominant visual', () => {
+    expect(phenotypes([{ locusId: 'desert_ghost_complex', alleles: ['desert_ghost', 'normal'] }], 'standard')).toEqual([]);
+  });
+
+  // --- Diagnostic mode: visual gated on DGc homozygous ---
+
+  it('diagnostic: DGc homozygous-mutant yields "Visual Desert Ghost"', () => {
+    expect(phenotypes([{ locusId: 'dg_c', alleles: ['dgc', 'dgc'] }], 'diagnostic')).toContain(
+      'Visual Desert Ghost',
+    );
+  });
+
+  it('diagnostic: DGc heterozygous is visually normal (gate needs homozygous)', () => {
+    expect(phenotypes([{ locusId: 'dg_c', alleles: ['dgc', 'normal'] }], 'diagnostic')).toEqual([]);
+  });
+
+  it('diagnostic: DGa / DGb mutations alone read visually normal', () => {
+    expect(
+      phenotypes(
+        [
+          { locusId: 'dg_a', alleles: ['dga', 'dga'] },
+          { locusId: 'dg_b', alleles: ['dgb', 'dgb'] },
+          { locusId: 'dg_c', alleles: ['normal', 'normal'] },
+        ],
+        'diagnostic',
+      ),
+    ).toEqual([]);
+  });
+
+  it('diagnostic actually changes output vs standard for the same genotype', () => {
+    const dgaHomo: GenotypeOutcome['loci'] = [{ locusId: 'dg_a', alleles: ['dga', 'dga'] }];
+    // Standard treats DGa as its own recessive-like visual; diagnostic suppresses
+    // it (only DGc gates the phenotype).
+    expect(phenotypes(dgaHomo, 'standard')).toEqual(['DG-A']);
+    expect(phenotypes(dgaHomo, 'diagnostic')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-10: epistatic visual masking (BEL super white, Black Head Spider)
+// ---------------------------------------------------------------------------
+
+describe('REQ-10: epistatic visual masking', () => {
+  const allele = (id: string, name: string, defects?: string[]) => ({ id, name, ...(defects ? { defects } : {}) });
+  const epiDict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      blue_eyed_lucy_complex: {
+        id: 'blue_eyed_lucy_complex', name: 'BEL Complex',
+        inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), mojave: allele('mojave', 'Mojave'), lesser: allele('lesser', 'Lesser') },
+      },
+      pastel_locus: {
+        id: 'pastel_locus', name: 'Pastel', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), pastel: allele('pastel', 'Pastel') },
+      },
+      spider_complex: {
+        id: 'spider_complex', name: 'Spider', inheritance: 'dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), spider: allele('spider', 'Spider', ['Neurological Wobble']) },
+      },
+      black_head_complex: {
+        id: 'black_head_complex', name: 'Black Head', inheritance: 'incomplete_dominant', isSexLinked: false,
+        alleles: { normal: allele('normal', 'Normal'), black_head: allele('black_head', 'Black Head') },
+      },
+    },
+    epistasisRules: [
+      {
+        name: 'Blue-Eyed Leucistic',
+        conditions: [{ locusId: 'blue_eyed_lucy_complex', state: 'homozygous' }],
+        suppressAll: true,
+        label: 'Blue-Eyed Leucistic',
+      },
+      {
+        name: 'Black Head Spider',
+        conditions: [
+          { locusId: 'black_head_complex', state: 'present', allele: 'black_head' },
+          { locusId: 'spider_complex', state: 'present', allele: 'spider' },
+        ],
+        suppressLoci: ['black_head_complex', 'spider_complex'],
+        label: 'Black Head Spider (visually near-normal)',
+      },
+    ],
+  };
+
+  function aggregate(loci: GenotypeOutcome['loci']): AggregatedOutcome {
+    const g: GenotypeOutcome = { loci, decimalProbability: 1.0 };
+    return aggregateOutcomes([g], makePair(), epiDict)[0];
+  }
+
+  it('BEL-super masks an unlinked Pastel → reports the solid-white phenotype only', () => {
+    const out = aggregate([
+      { locusId: 'blue_eyed_lucy_complex', alleles: ['mojave', 'lesser'] }, // compound BEL → white
+      { locusId: 'pastel_locus', alleles: ['pastel', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toEqual(['Blue-Eyed Leucistic']);
+    expect(out.phenotypeNames).not.toContain('Pastel');
+    // Underlying genotype is retained for downstream crosses.
+    expect(out.genotype.loci.find((l) => l.locusId === 'pastel_locus')?.alleles).toEqual([
+      'pastel',
+      'normal',
+    ]);
+  });
+
+  it('Black Head Spider reads visually near-normal while retaining genotype + wobble', () => {
+    const out = aggregate([
+      { locusId: 'black_head_complex', alleles: ['black_head', 'normal'] },
+      { locusId: 'spider_complex', alleles: ['spider', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toEqual(['Black Head Spider (visually near-normal)']);
+    expect(out.phenotypeNames).not.toContain('Spider');
+    expect(out.phenotypeNames).not.toContain('Black Head');
+    // Congenital warning is independent of visual masking.
+    expect(out.congenitalWarnings).toContain('Neurological Wobble');
+    expect(out.genotype.loci).toHaveLength(2);
+  });
+
+  it('masks only the suppressed loci — an unlinked Pastel still shows alongside the label', () => {
+    const out = aggregate([
+      { locusId: 'black_head_complex', alleles: ['black_head', 'normal'] },
+      { locusId: 'spider_complex', alleles: ['spider', 'normal'] },
+      { locusId: 'pastel_locus', alleles: ['pastel', 'normal'] },
+    ]);
+    expect(out.phenotypeNames).toContain('Pastel');
+    expect(out.phenotypeNames).toContain('Black Head Spider (visually near-normal)');
+    expect(out.phenotypeNames).not.toContain('Spider');
+  });
+
+  it('negative control: a non-epistatic genotype is unchanged', () => {
+    expect(aggregate([{ locusId: 'pastel_locus', alleles: ['pastel', 'normal'] }]).phenotypeNames).toEqual([
+      'Pastel',
+    ]);
+  });
+
+  it('negative control: Black Head WITHOUT Spider is not masked', () => {
+    expect(
+      aggregate([{ locusId: 'black_head_complex', alleles: ['black_head', 'normal'] }]).phenotypeNames,
+    ).toEqual(['Black Head']);
+  });
+
+  it('negative control: a single-allele BEL (not homozygous) does not trigger the white override', () => {
+    expect(
+      aggregate([{ locusId: 'blue_eyed_lucy_complex', alleles: ['mojave', 'normal'] }]).phenotypeNames,
+    ).toEqual(['Mojave']);
   });
 });

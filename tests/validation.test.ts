@@ -1,6 +1,7 @@
 import { normalizeInput } from '../src/validation';
 import {
   MorphkitCalculationInput,
+  MorphkitDictionary,
   InvalidGenotypeError,
   SchemaValidationError,
 } from '../src/types';
@@ -401,5 +402,234 @@ describe('output shape', () => {
 
     expect(original.sire.genotype).toHaveLength(originalGenotypeLength);
     expect(original.dam.genotype).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-7 + REQ-9 — dictionary-aware alias resolution and validation (MK-1)
+// ---------------------------------------------------------------------------
+
+describe('dictionary-aware MK-1 (aliases + validation)', () => {
+  const dict: MorphkitDictionary = {
+    version: '0.0.0-test',
+    lastUpdated: '2026-06-19T00:00:00Z',
+    polygenicTags: [],
+    combos: [],
+    lethalCombos: [],
+    loci: {
+      albino_complex: {
+        id: 'albino_complex',
+        name: 'Albino',
+        inheritance: 'recessive',
+        isSexLinked: false,
+        alleles: {
+          normal: { id: 'normal', name: 'Normal' },
+          candy: { id: 'candy', name: 'Candy', aliases: ['Toffee'] },
+        },
+      },
+    },
+  };
+
+  function sireGenotype(input: MorphkitCalculationInput, locusId: string) {
+    return normalizeInput(input, dict).sire.genotype.find((l) => l.locusId === locusId);
+  }
+
+  it('resolves a synonym (Toffee) to its canonical allele id (candy)', () => {
+    const locus = sireGenotype(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'albino_complex', alleles: ['Toffee', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+      'albino_complex',
+    );
+    expect(locus?.alleles).toEqual(['candy', 'normal']);
+  });
+
+  it('merges a synonym + canonical into a homozygote (Toffee × Candy → [candy, candy])', () => {
+    const locus = sireGenotype(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'albino_complex', alleles: ['Toffee', 'Candy'] }],
+          polygenics: [],
+        },
+      }),
+      'albino_complex',
+    );
+    expect(locus?.alleles).toEqual(['candy', 'candy']);
+  });
+
+  it('throws SchemaValidationError for an unknown locus', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'made_up_locus', alleles: ['whatever'] }],
+            polygenics: [],
+          },
+        }),
+        dict,
+      ),
+    ).toThrow(SchemaValidationError);
+  });
+
+  it('throws InvalidGenotypeError for an allele not defined on its locus', () => {
+    try {
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'albino_complex', alleles: ['spider', 'normal'] }],
+            polygenics: [],
+          },
+        }),
+        dict,
+      );
+      fail('expected InvalidGenotypeError');
+    } catch (err) {
+      expect(err).toBeInstanceOf(InvalidGenotypeError);
+      expect((err as InvalidGenotypeError).locusId).toBe('albino_complex');
+    }
+  });
+
+  it('without a dictionary, passes through unknown loci/alleles (backward compatible)', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'made_up_locus', alleles: ['whatever'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'made_up_locus');
+    expect(locus?.alleles).toEqual(['whatever', 'normal']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-5 — sex-linked sexChromosomes normalization (MK-1)
+// ---------------------------------------------------------------------------
+
+describe('sexChromosomes normalization', () => {
+  it('carries a two-entry annotation through unchanged (uppercased)', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [
+            {
+              locusId: 'banana_locus',
+              alleles: ['banana', 'normal'],
+              sexChromosomes: ['x', 'y'] as unknown as ('X' | 'Y')[],
+            },
+          ],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'banana_locus');
+    expect(locus?.sexChromosomes).toEqual(['X', 'Y']);
+  });
+
+  it('expands a single-allele annotation, putting the injected normal on the opposite chromosome', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'banana_locus', alleles: ['banana'], sexChromosomes: ['Y'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'banana_locus');
+    expect(locus?.alleles).toEqual(['banana', 'normal']);
+    expect(locus?.sexChromosomes).toEqual(['Y', 'X']);
+  });
+
+  it('throws SchemaValidationError for an invalid chromosome value', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [
+              { locusId: 'banana_locus', alleles: ['banana', 'normal'], sexChromosomes: ['Z', 'X'] as ('X' | 'Y')[] },
+            ],
+            polygenics: [],
+          },
+        }),
+      ),
+    ).toThrow(SchemaValidationError);
+  });
+
+  it('leaves autosomal loci without a sexChromosomes field', () => {
+    const result = normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown', 'normal'] }],
+          polygenics: [],
+        },
+      }),
+    );
+    const locus = result.sire.genotype.find((l) => l.locusId === 'clown_locus');
+    expect(locus?.sexChromosomes).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-12 — carrier zygosity (het / pos_het)
+// ---------------------------------------------------------------------------
+
+describe('carrier zygosity normalization', () => {
+  function sireLocus(zygosity: 'het' | 'pos_het', carrierProbability?: number) {
+    return normalizeInput(
+      makeInput({
+        sire: {
+          id: 'sire-1', sex: 'male',
+          genotype: [{ locusId: 'clown_locus', alleles: ['clown'], zygosity, carrierProbability }],
+          polygenics: [],
+        },
+      }),
+    ).sire.genotype.find((l) => l.locusId === 'clown_locus');
+  }
+
+  it("'het' expands to a definite [mutant, normal] carrier with no carrierProbability", () => {
+    const locus = sireLocus('het');
+    expect(locus?.alleles).toEqual(['clown', 'normal']);
+    expect(locus?.carrierProbability).toBeUndefined();
+  });
+
+  it("'pos_het' defaults to a 0.5 carrierProbability", () => {
+    const locus = sireLocus('pos_het');
+    expect(locus?.alleles).toEqual(['clown', 'normal']);
+    expect(locus?.carrierProbability).toBe(0.5);
+  });
+
+  it("'pos_het' honors an explicit carrierProbability (e.g. 66%)", () => {
+    expect(sireLocus('pos_het', 0.66)?.carrierProbability).toBe(0.66);
+  });
+
+  it('throws for a carrierProbability outside 0–1', () => {
+    expect(() => sireLocus('pos_het', 1.5)).toThrow(SchemaValidationError);
+  });
+
+  it('throws when zygosity is given without a mutant allele', () => {
+    expect(() =>
+      normalizeInput(
+        makeInput({
+          sire: {
+            id: 'sire-1', sex: 'male',
+            genotype: [{ locusId: 'clown_locus', alleles: ['normal'], zygosity: 'pos_het' }],
+            polygenics: [],
+          },
+        }),
+      ),
+    ).toThrow(SchemaValidationError);
   });
 });

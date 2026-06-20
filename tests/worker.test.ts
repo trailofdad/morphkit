@@ -9,7 +9,7 @@ import {
   WorkerSuccessMessage,
 } from '../src/types';
 import { runCalculationPipeline } from '../src/worker/pipeline';
-import { calculateMorphsAsync } from '../src/index';
+import { calculateMorphs, calculateMorphsAsync } from '../src/index';
 import { mockDictionary } from './__mocks__/mockDictionary';
 
 // ---------------------------------------------------------------------------
@@ -177,6 +177,36 @@ describe('runCalculationPipeline', () => {
       return locus?.alleles[0] === 'spider' && locus?.alleles[1] === 'spider';
     });
     expect(lethal?.isLethal).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2: calculateMorphs — synchronous public entry point (no Worker plumbing)
+// ---------------------------------------------------------------------------
+
+describe('calculateMorphs (synchronous export)', () => {
+  it('returns a MorphkitCalculationOutput directly, without a Worker', () => {
+    const result = calculateMorphs(clownHetInput(), mockDictionary);
+    expect(result).toHaveProperty('outcomes');
+    expect(result).toHaveProperty('normalizedInput');
+    expect(result).toHaveProperty('calculatedAt');
+    expect(Array.isArray(result.outcomes)).toBe(true);
+  });
+
+  it('produces identical outcomes to the worker path for the same input', async () => {
+    const sync = calculateMorphs(clownHetInput(), mockDictionary);
+    const viaWorker = await calculateMorphsAsync(clownHetInput(), mockDictionary, 'mock://worker');
+    // calculatedAt differs (timestamp); the genetic result must not.
+    expect(sync.outcomes).toEqual(viaWorker.outcomes);
+    expect(sync.normalizedInput).toEqual(viaWorker.normalizedInput);
+  });
+
+  it('throws typed errors directly (no serialization roundtrip)', () => {
+    const badInput = {
+      sire: { id: 'sire', genotype: [], polygenics: [] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    } as unknown as MorphkitCalculationInput;
+    expect(() => calculateMorphs(badInput, mockDictionary)).toThrow(SchemaValidationError);
   });
 });
 
@@ -475,5 +505,47 @@ describe('AC-2: calculateMorphsAsync cleanly rejects with SchemaValidationError'
 
     expect(didCatch).toBe(true);
     expect(caughtError).toBeInstanceOf(SchemaValidationError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-12: possible-het (pos_het) produces a weighted carrier distribution
+// ---------------------------------------------------------------------------
+
+describe('REQ-12: pos_het parent yields a probabilistic carrier distribution', () => {
+  const carrierProb = (out: ReturnType<typeof runCalculationPipeline>): number =>
+    out.outcomes
+      .filter((o) => o.genotype.loci.find((l) => l.locusId === 'clown_locus')?.alleles.includes('clown'))
+      .reduce((s, o) => s + o.decimalProbability, 0);
+
+  function clownSire(
+    zygosity: 'het' | 'pos_het',
+    carrierProbability?: number,
+  ): MorphkitCalculationInput {
+    return {
+      sire: {
+        id: 'sire', sex: 'male',
+        genotype: [{ locusId: 'clown_locus', alleles: ['clown'], zygosity, carrierProbability }],
+        polygenics: [],
+      },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    };
+  }
+
+  it('50% pos_het clown × normal → 25% of offspring carry clown, summing to 1.0', () => {
+    const out = runCalculationPipeline(clownSire('pos_het', 0.5), mockDictionary);
+    expect(carrierProb(out)).toBeCloseTo(0.25, 10);
+    expect(out.outcomes.reduce((s, o) => s + o.decimalProbability, 0)).toBeCloseTo(1.0, 10);
+  });
+
+  it('proven het clown × normal → 50% carry clown (deterministic, no pos-het dilution)', () => {
+    expect(carrierProb(runCalculationPipeline(clownSire('het'), mockDictionary))).toBeCloseTo(0.5, 10);
+  });
+
+  it('66% pos_het clown × normal → 33% carry clown', () => {
+    expect(carrierProb(runCalculationPipeline(clownSire('pos_het', 0.66), mockDictionary))).toBeCloseTo(
+      0.33,
+      10,
+    );
   });
 });
