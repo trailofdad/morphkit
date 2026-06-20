@@ -134,6 +134,8 @@ Each `AggregatedOutcome` contains:
 | `congenitalWarnings` | Defect labels from the dictionary (e.g. `"Neurological Wobble"`) |
 | `polygenics` | Deduplicated polygenics from both parents |
 
+The top-level result also carries a **`warnings`** array (`CalculationWarning[]`, empty when clean) for non-fatal advisories that don't change the genetic result — for example an additive polygenic tag that isn't in the dictionary's `polygenicTags` (`code: "unknown_polygenic_tag"`). Unlike unknown loci/alleles (which MK-1 throws on), an unknown polygenic tag is passed through and merely flagged here so a UI can surface a likely typo.
+
 ### 3. Using the Web Worker (Vite)
 
 For browser apps, Vite can bundle the worker automatically:

@@ -1,10 +1,11 @@
-import { normalizeInput } from '../src/validation';
+import { collectPolygenicWarnings, normalizeInput } from '../src/validation';
 import {
   MorphkitCalculationInput,
   MorphkitDictionary,
   InvalidGenotypeError,
   SchemaValidationError,
 } from '../src/types';
+import { mockDictionary } from './__mocks__/mockDictionary';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -631,5 +632,61 @@ describe('carrier zygosity normalization', () => {
         }),
       ),
     ).toThrow(SchemaValidationError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #20 — soft polygenic-tag validation (collectPolygenicWarnings)
+// ---------------------------------------------------------------------------
+
+describe('collectPolygenicWarnings', () => {
+  // mockDictionary.polygenicTags === ["Jungle", "Black Back"]
+  function warningsFor(sireTags: string[], damTags: string[] = []): ReturnType<typeof collectPolygenicWarnings> {
+    const pair = normalizeInput(
+      makeInput({
+        sire: { id: 'sire-1', sex: 'male', genotype: [], polygenics: sireTags },
+        dam: { id: 'dam-1', sex: 'female', genotype: [], polygenics: damTags },
+      }),
+      mockDictionary,
+    );
+    return collectPolygenicWarnings(pair, mockDictionary);
+  }
+
+  it('emits no warning for a known tag', () => {
+    expect(warningsFor(['Jungle'])).toEqual([]);
+  });
+
+  it('matches known tags case-insensitively', () => {
+    expect(warningsFor(['jUnGlE', 'black back'])).toEqual([]);
+  });
+
+  it('warns for an unknown tag, naming it with the unknown_polygenic_tag code', () => {
+    const warnings = warningsFor(['Jungel']);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('unknown_polygenic_tag');
+    expect(warnings[0].message).toContain('Jungel');
+  });
+
+  it('does not throw or drop the tag (advisory only)', () => {
+    const pair = normalizeInput(
+      makeInput({
+        sire: { id: 'sire-1', sex: 'male', genotype: [], polygenics: ['Jungel'] },
+      }),
+      mockDictionary,
+    );
+    // The tag survives normalization untouched — only a separate warning is raised.
+    expect(pair.sire.polygenics).toContain('Jungel');
+    expect(() => collectPolygenicWarnings(pair, mockDictionary)).not.toThrow();
+  });
+
+  it('deduplicates an unknown tag carried by both parents into one warning', () => {
+    expect(warningsFor(['Jungel'], ['jungel'])).toHaveLength(1);
+  });
+
+  it('returns one warning per distinct unknown tag', () => {
+    const warnings = warningsFor(['Jungel', 'Stripey'], ['Black Back']);
+    expect(warnings.map((w) => w.message).join(' ')).toContain('Jungel');
+    expect(warnings.map((w) => w.message).join(' ')).toContain('Stripey');
+    expect(warnings).toHaveLength(2);
   });
 });

@@ -158,6 +158,27 @@ describe('runCalculationPipeline', () => {
     }
   });
 
+  it('surfaces an empty warnings channel when all polygenic tags are known', () => {
+    const input: MorphkitCalculationInput = {
+      sire: { id: 'sire', sex: 'male', genotype: [], polygenics: ['Jungle'] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: ['Black Back'] },
+    };
+    expect(runCalculationPipeline(input, mockDictionary).warnings).toEqual([]);
+  });
+
+  it('warns (without throwing) for an unknown polygenic tag, leaving outcomes intact', () => {
+    const input: MorphkitCalculationInput = {
+      sire: { id: 'sire', sex: 'male', genotype: [], polygenics: ['Jungel'] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    };
+    const result = runCalculationPipeline(input, mockDictionary);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].code).toBe('unknown_polygenic_tag');
+    expect(result.warnings[0].message).toContain('Jungel');
+    // Advisory only: the unknown tag still rides along on every outcome.
+    for (const outcome of result.outcomes) expect(outcome.polygenics).toContain('Jungel');
+  });
+
   it('flags lethal outcomes (homozygous spider)', () => {
     const input: MorphkitCalculationInput = {
       sire: {
