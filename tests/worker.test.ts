@@ -9,7 +9,7 @@ import {
   WorkerSuccessMessage,
 } from '../src/types';
 import { runCalculationPipeline } from '../src/worker/pipeline';
-import { calculateMorphs, calculateMorphsAsync } from '../src/index';
+import { calculateMorphs, calculateMorphsAsync, disposeWorkers } from '../src/index';
 import { mockDictionary } from './__mocks__/mockDictionary';
 
 // ---------------------------------------------------------------------------
@@ -18,27 +18,39 @@ import { mockDictionary } from './__mocks__/mockDictionary';
 // ---------------------------------------------------------------------------
 
 class MockWorker {
+  /** Counts constructions so tests can assert the pool reuses one worker. */
+  static instances = 0;
+
   onmessage: ((event: { data: WorkerOutboundMessage }) => void) | null = null;
   onerror: ((event: { message: string }) => void) | null = null;
   private terminated = false;
 
-  constructor(_url: URL | string) {}
+  constructor(_url: URL | string) {
+    MockWorker.instances++;
+  }
 
   postMessage(data: unknown): void {
     if (this.terminated) return;
-    const msg = data as { type: string; input: MorphkitCalculationInput; dictionary: MorphkitDictionary };
+    const msg = data as {
+      type: string;
+      requestId: number;
+      input: MorphkitCalculationInput;
+      dictionary: MorphkitDictionary;
+    };
 
-    // Simulate the async worker roundtrip
-    setTimeout(() => {
+    // Simulate the async worker roundtrip on a microtask so the idle-timeout
+    // test can drive Jest's fake timers without also governing response delivery.
+    void Promise.resolve().then(() => {
       if (this.terminated || !this.onmessage) return;
       try {
         const output = runCalculationPipeline(msg.input, msg.dictionary);
-        const response: WorkerSuccessMessage = { type: 'SUCCESS', output };
+        const response: WorkerSuccessMessage = { type: 'SUCCESS', requestId: msg.requestId, output };
         this.onmessage({ data: response });
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         const response: WorkerErrorMessage = {
           type: 'ERROR',
+          requestId: msg.requestId,
           error: {
             name: error.name,
             message: error.message,
@@ -49,7 +61,7 @@ class MockWorker {
         };
         this.onmessage({ data: response });
       }
-    }, 0);
+    });
   }
 
   terminate(): void {
@@ -61,6 +73,13 @@ class MockWorker {
 // calculateMorphsAsync does `new Worker(url)` at call time — not at import time —
 // so assigning here (before test execution) is sufficient.
 (global as Record<string, unknown>).Worker = MockWorker;
+
+// The worker pool persists across calls (that's the point of issue #21), so
+// reset it between tests — otherwise a cached MockWorker would survive a
+// `global.Worker` swap and a leftover idle timer could outlive the test.
+afterEach(() => {
+  disposeWorkers();
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -294,11 +313,13 @@ describe('calculateMorphsAsync', () => {
       onmessage: ((e: { data: WorkerOutboundMessage }) => void) | null = null;
       onerror: ((e: { message: string }) => void) | null = null;
       terminate(): void { /* no-op */ }
-      postMessage(_data: unknown): void {
+      postMessage(data: unknown): void {
+        const { requestId } = data as { requestId: number };
         setTimeout(() => {
           if (!this.onmessage) return;
           const response: WorkerErrorMessage = {
             type: 'ERROR',
+            requestId,
             error: { name: 'WeirdError', message: 'something unusual' },
           };
           this.onmessage({ data: response });
@@ -568,5 +589,102 @@ describe('REQ-12: pos_het parent yields a probabilistic carrier distribution', (
       0.33,
       10,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #21: calculateMorphsAsync reuses a persistent/pooled worker
+// ---------------------------------------------------------------------------
+
+describe('#21: persistent/pooled worker', () => {
+  it('reuses one persistent worker across sequential calls (no per-call spawn)', async () => {
+    const url = 'mock://reuse';
+    const before = MockWorker.instances;
+
+    await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+    await calculateMorphsAsync(clownHetInput(), mockDictionary, url);
+    await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+
+    expect(MockWorker.instances - before).toBe(1);
+  });
+
+  it('routes concurrent in-flight calculations to the correct caller by requestId', async () => {
+    const url = 'mock://concurrent';
+    const a: MorphkitCalculationInput = {
+      sire: { id: 'sire-A', sex: 'male', genotype: [], polygenics: [] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    };
+    const b: MorphkitCalculationInput = {
+      sire: { id: 'sire-B', sex: 'male', genotype: [], polygenics: [] },
+      dam: { id: 'dam', sex: 'female', genotype: [], polygenics: [] },
+    };
+    const before = MockWorker.instances;
+
+    const [resultA, resultB] = await Promise.all([
+      calculateMorphsAsync(a, mockDictionary, url),
+      calculateMorphsAsync(b, mockDictionary, url),
+    ]);
+
+    expect(resultA.normalizedInput.sire.id).toBe('sire-A');
+    expect(resultB.normalizedInput.sire.id).toBe('sire-B');
+    // Both calculations rode the same single worker.
+    expect(MockWorker.instances - before).toBe(1);
+  });
+
+  it('produces results identical to the synchronous path', async () => {
+    const url = 'mock://identical';
+    const sync = calculateMorphs(clownHetInput(), mockDictionary);
+    const viaPool = await calculateMorphsAsync(clownHetInput(), mockDictionary, url);
+    expect(viaPool.outcomes).toEqual(sync.outcomes);
+    expect(viaPool.normalizedInput).toEqual(sync.normalizedInput);
+  });
+
+  it('disposeWorkers() releases the worker; the next call spawns a fresh one', async () => {
+    const url = 'mock://dispose';
+    const before = MockWorker.instances;
+
+    await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+    expect(MockWorker.instances - before).toBe(1);
+
+    disposeWorkers();
+
+    await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+    expect(MockWorker.instances - before).toBe(2);
+  });
+
+  it('disposeWorkers() rejects an in-flight calculation', async () => {
+    class NeverWorker {
+      onmessage: ((e: { data: WorkerOutboundMessage }) => void) | null = null;
+      onerror: ((e: { message: string }) => void) | null = null;
+      terminate(): void { /* no-op */ }
+      postMessage(_data: unknown): void { /* never responds */ }
+    }
+    (global as Record<string, unknown>).Worker = NeverWorker;
+
+    const promise = calculateMorphsAsync(BASE_INPUT, mockDictionary, 'mock://never');
+    disposeWorkers();
+    await expect(promise).rejects.toThrow(/disposed/);
+
+    (global as Record<string, unknown>).Worker = MockWorker;
+  });
+
+  it('terminates an idle worker after the timeout and respawns on the next call', async () => {
+    jest.useFakeTimers();
+    try {
+      const url = 'mock://idle';
+      const before = MockWorker.instances;
+
+      await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+      expect(MockWorker.instances - before).toBe(1);
+
+      // The worker is now idle with a ~30s teardown timer armed — fire it.
+      jest.advanceTimersByTime(30_000);
+
+      // Worker was torn down, so the next call must construct a fresh one.
+      await calculateMorphsAsync(BASE_INPUT, mockDictionary, url);
+      expect(MockWorker.instances - before).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
