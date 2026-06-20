@@ -1,6 +1,6 @@
 {
   "name": "@trailofdad/morphkit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "A modern, open-source, client-side genetic calculation engine for reptile breeding.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

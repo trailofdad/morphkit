@@ -32,6 +32,15 @@ Morphkit is a pure-computation library with no runtime dependencies. The trait d
 
 ## Quick Start
 
+**Pick your entry point first** (all four run the same MK-1 → MK-2 → MK-3/4 pipeline):
+
+- Know each parent's exact genotype? Use the **complex** tier (`{ locusId, alleles: [a, b] }`).
+- Only have a list of **morph names** per parent? Use the **simple** tier — `calculateMorphsSimple` (details under [API tiers](#api-tiers-complex-vs-simple)).
+- Need it **off the UI thread** (large crosses, recalc on every keystroke without jank)? Use `calculateMorphsAsync` + a bundled worker.
+- SSR, a Node script, a test, or a cheap client-side recalc? Use the synchronous `calculateMorphs` — no worker, no `workerUrl` (details under [Synchronous vs. worker](#synchronous-vs-worker)).
+
+The walk-through below uses `calculateMorphsAsync`; swap in `calculateMorphs` for the sync path.
+
 ### 1. Fetch the dictionary
 
 In production, pin to an immutable version tag. jsDelivr permanently caches versioned URLs, so there is no edge-propagation delay. Drive the version from an environment variable so a dictionary update is a config change, not a code deploy:
@@ -167,7 +176,7 @@ Morphkit is architected around the **locus + allele** model (built with RGI / sh
 | **Complex** (available today) | `genotype: [{ locusId, alleles: [a, b] }]` — every locus and both alleles stated explicitly | RGI-style apps that track genotypes precisely, including zygosity and het status |
 | **Simple** (available today) | `morphs: string[]` per parent — a flat list of morph names, no second allele required | Lightweight integrations that only know visual/named morphs and want outcomes + percentages |
 
-**The simple tier is a thin front-end, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract-planned) for the full contract). For example:
+**The simple tier is a thin front-end, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract) for the full contract). For example:
 
 - `"Clown"` (recessive) → `[clown, clown]` — a recessive is only visual when homozygous
 - `"Het Clown"` → `[clown, normal]`
@@ -200,16 +209,30 @@ Each `genotype` locus can declare a carrier `zygosity` instead of spelling out b
 
 This is the shed-testing / qPCR workflow: model an unproven parent as `pos_het`, and when a DNA test comes back, collapse it to `'het'` (proven positive) or drop the locus (proven negative) — no separate "DNA proven" flag needed.
 
+## Calculation modes & visual masking
+
+Two dictionary-driven behaviors affect what `phenotypeNames` you get back. Neither changes the genotype math — both run in the aggregator (MK-3/4).
+
+**`calculationMode` (input field, defaults to `'standard'`).** Controls how polygenic loci surface:
+
+- In `'standard'` mode a `polygenic` locus is treated recessive-like — visual only when homozygous-mutant.
+- In `'diagnostic'` mode, a `dictionary.polygenicGroups` entry (e.g. Desert Ghost = `dg_a` / `dg_b` / `dg_c`) suppresses its member loci's individual visuals and emits the group's `visualLabel` only when the group's `causalLocus` is homozygous-mutant. This is the RGI-style diagnostic split; most consumer UIs can leave the default.
+
+> The separate additive `polygenics: string[]` field is independent of mode — it is deduplicated across both parents and passed through onto every outcome. An additive tag that isn't in `dictionary.polygenicTags` is surfaced via the `warnings` channel (`code: "unknown_polygenic_tag"`), never dropped or thrown.
+
+**Epistatic masking (`dictionary.epistasisRules`).** After collecting per-locus visuals, the aggregator applies masking rules that rewrite **only** `phenotypeNames` — the genotype, `possibleHets`, and `congenitalWarnings` are untouched, so downstream crosses and defect flags stay correct. For example, a Blue-Eyed Leucistic super reports the solid-white phenotype and suppresses unlinked visuals; a Black Head Spider reads "near-normal" while still carrying its `"Neurological Wobble"` warning. A UI renders `phenotypeNames`/`comboName` as-is and does not need to implement masking itself.
+
 ## Architecture
 
 Data flows through six layers (MK-1 through MK-6) with strict responsibility boundaries. No layer skips or reaches back.
 
 | Layer | Path | Role |
 |---|---|---|
-| MK-1 | `src/validation/` | Normalizes raw `MorphkitCalculationInput` → `NormalizedBreedingPair`; fills implicit single-allele loci to `[allele, "Normal"]` |
+| (simple tier) | `src/simple/` | Optional pre-MK-1 front-end: desugars a per-parent morph-name list into a complex `MorphkitCalculationInput`. No genetics logic of its own |
+| MK-1 | `src/validation/` | Normalizes raw `MorphkitCalculationInput` → `NormalizedBreedingPair`; lowercases locusIds/alleles; fills implicit single-allele loci to `[allele, "normal"]` |
 | MK-2 | `src/engine/` | Cartesian Punnett Matrix — pure allele math, outputs `GenotypeOutcome[]`; verifies Hardy-Weinberg sum = 1.0 |
-| MK-3/4 | `src/aggregator/` | Translates genotypes → phenotypes, resolves combo names, computes poss-hets, flags lethality and congenital defects → `AggregatedOutcome[]` |
-| MK-5 | `src/worker/` | Web Worker wrapper and message routing; main thread fetches the dictionary and passes it as a payload |
+| MK-3/4 | `src/aggregator/` | Translates genotypes → phenotypes, resolves combo names, computes poss-hets, applies polygenic-group gating and epistatic masking, flags lethality and congenital defects → `AggregatedOutcome[]` |
+| MK-5 | `src/worker/` | Web Worker wrapper, message routing, and synchronous pipeline orchestration; main thread fetches the dictionary and passes it as a payload |
 | MK-6 | `src/network/` | `syncDictionary` — stale-while-revalidate CDN fetch with `localStorage` cache |
 
 `src/types.ts` is the single source of truth for all interfaces and error classes.
