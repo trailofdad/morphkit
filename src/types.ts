@@ -415,9 +415,17 @@ export interface MorphkitDictionary {
 // Worker Message Protocol (MK-5)
 // ---------------------------------------------------------------------------
 
+/**
+ * Correlates a request with its response so a single persistent worker can have
+ * several calculations in flight at once. The main thread assigns it on
+ * `CALCULATE`; the worker echoes it verbatim on the matching `SUCCESS`/`ERROR`.
+ */
+export type WorkerRequestId = number;
+
 /** Message sent from main thread → worker to trigger a calculation. */
 export interface WorkerCalculateMessage {
   type: 'CALCULATE';
+  requestId: WorkerRequestId;
   input: MorphkitCalculationInput;
   dictionary: MorphkitDictionary;
 }
@@ -434,12 +442,14 @@ export interface WorkerErrorPayload {
 /** Success response sent from worker → main thread. */
 export interface WorkerSuccessMessage {
   type: 'SUCCESS';
+  requestId: WorkerRequestId;
   output: MorphkitCalculationOutput;
 }
 
 /** Error response sent from worker → main thread. */
 export interface WorkerErrorMessage {
   type: 'ERROR';
+  requestId: WorkerRequestId;
   error: WorkerErrorPayload;
 }
 

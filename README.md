@@ -122,6 +122,17 @@ import { calculateMorphs } from '@trailofdad/morphkit';
 const result = calculateMorphs(input, dictionary); // no Promise, no worker
 ```
 
+`calculateMorphsAsync` keeps a **persistent worker per `workerUrl`** and reuses it across calls, so rapid successive crosses don't pay repeated worker startup/teardown; several calculations may be in flight on the same worker at once. An idle worker self-terminates after ~30s — or call `disposeWorkers()` to release them eagerly (e.g. on unmount), which also rejects any still-in-flight calculations.
+
+```ts
+import { calculateMorphsAsync, disposeWorkers } from '@trailofdad/morphkit';
+
+const workerUrl = new URL('./morphkit.worker.js', import.meta.url);
+const a = await calculateMorphsAsync(input, dictionary, workerUrl); // spawns the worker
+const b = await calculateMorphsAsync(input2, dictionary, workerUrl); // reuses it
+disposeWorkers(); // optional: free the worker now instead of waiting for the idle timeout
+```
+
 Each `AggregatedOutcome` contains:
 
 | Field | Description |

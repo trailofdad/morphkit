@@ -53,7 +53,11 @@ export function useMorphkit(): UseMorphkitReturn {
         };
 
         const message: WorkerCalculateMessage = {
+          // This hook spawns a dedicated one-shot worker per call, so a constant
+          // requestId is fine; the library's pooled calculateMorphsAsync assigns a
+          // unique id per call to multiplex a persistent worker.
           type: 'CALCULATE',
+          requestId: 0,
           input,
           dictionary,
         };
