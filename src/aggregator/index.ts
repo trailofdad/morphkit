@@ -1,5 +1,6 @@
 import {
   AggregatedOutcome,
+  AnimalSex,
   CalculationMode,
   EpistasisRule,
   GenotypeOutcome,
@@ -197,14 +198,52 @@ function isLethalOutcome(
   );
 }
 
-// REQ-3.3: Returns the matching combo's marketName, or undefined if no match.
-function matchCombo(
+/**
+ * REQ-3.3: Collapses registered market combos into the visual-trait list.
+ *
+ * A combo (e.g. Freeway = yellowbelly + asphalt) is a market name for a specific
+ * multi-allele genotype. The previous implementation took the *first* combo whose
+ * required genotype was a subset of the outcome, so a "Pastel Freeway" was
+ * mislabeled just "Freeway" and, because it used `Array.find`, the winner was
+ * dictionary-order-dependent. Instead we match every satisfied combo, prefer the
+ * ones covering the **most loci** (most specific first, name-tiebroken for
+ * determinism), and greedily consume loci so combos never overlap. Each selected
+ * combo replaces the individual traits on its loci with the single market name;
+ * traits on loci no combo covers pass through untouched. The result composes —
+ * "Freeway" (yellowbelly complex) sits alongside a leftover "Pastel".
+ *
+ * Runs before epistasis so a masking rule still sees (and can suppress) the
+ * combo's representative locus. A combo is only applied when every one of its
+ * loci is actually an expressed visual here; combos gated on a non-visual (het)
+ * component fall through to the individual traits.
+ */
+function applyCombos(
+  traits: readonly VisualTrait[],
   lociById: Map<string, NormalizedLocus>,
   dictionary: MorphkitDictionary,
-): string | undefined {
-  return dictionary.combos.find(({ requiredGenotype }) =>
-    genotypeMatches(lociById, requiredGenotype),
-  )?.marketName;
+): VisualTrait[] {
+  const present = new Set(traits.map((t) => t.locusId));
+  const candidates = dictionary.combos
+    .map((combo) => ({ combo, loci: Object.keys(combo.requiredGenotype) }))
+    .filter(
+      ({ combo, loci }) =>
+        loci.every((l) => present.has(l)) && genotypeMatches(lociById, combo.requiredGenotype),
+    )
+    .sort(
+      (a, b) => b.loci.length - a.loci.length || a.combo.marketName.localeCompare(b.combo.marketName),
+    );
+
+  const consumed = new Set<string>();
+  const selected: VisualTrait[] = [];
+  for (const { combo, loci } of candidates) {
+    if (loci.some((l) => consumed.has(l))) continue; // overlaps an already-picked combo
+    for (const l of loci) consumed.add(l);
+    selected.push({ locusId: loci[0], name: combo.marketName });
+  }
+  if (selected.length === 0) return [...traits];
+
+  // Combos first (they read as the headline), then any traits no combo covered.
+  return [...selected, ...traits.filter((t) => !consumed.has(t.locusId))];
 }
 
 // ---------------------------------------------------------------------------
@@ -253,8 +292,10 @@ export function aggregateOutcomes(
   const aggregated = outcomes.map((outcome): AggregatedOutcome => {
     const lociById = indexLoci(outcome.loci);
     const visualTraits = collectVisualTraits(outcome.loci, dictionary, pair.calculationMode);
-    // REQ-10: apply epistatic visual masking after per-locus collection.
-    const phenotypeNames = applyEpistasis(visualTraits, lociById, dictionary).map((t) => t.name);
+    // REQ-3.3: collapse registered market combos into the trait list, then
+    // REQ-10: apply epistatic visual masking on top.
+    const withCombos = applyCombos(visualTraits, lociById, dictionary);
+    const phenotypeNames = applyEpistasis(withCombos, lociById, dictionary).map((t) => t.name);
     const possibleHets: PossibleHet[] = [];
 
     for (const locus of outcome.loci) {
@@ -267,9 +308,11 @@ export function aggregateOutcomes(
       possibleHets.push({ locusId: locus.locusId, probability, isGuaranteed: probability >= 1.0 });
     }
 
-    const comboName =
-      matchCombo(lociById, dictionary) ??
-      (phenotypeNames.length > 0 ? phenotypeNames.join(' ') : undefined);
+    // Combos are already folded into phenotypeNames by applyCombos, so the
+    // outcome's market label is simply the joined visual names (undefined when
+    // all-Normal). This stays correct for "Pastel Freeway" — two names joined —
+    // where the old single-combo lookup could only ever emit "Freeway".
+    const comboName = phenotypeNames.length > 0 ? phenotypeNames.join(' ') : undefined;
 
     return {
       genotype: outcome,
@@ -286,4 +329,98 @@ export function aggregateOutcomes(
   });
 
   return aggregated.sort((a, b) => b.decimalProbability - a.decimalProbability);
+}
+
+// ---------------------------------------------------------------------------
+// Phenotype-grouped view (MK-4): one row per visible outcome
+// ---------------------------------------------------------------------------
+
+/** A possible-het on a folded phenotype row: P(carrier at locus | this phenotype). */
+export interface PhenotypeHet {
+  readonly locusId: string;
+  /** Conditional carrier probability given the folded phenotype, 0–1. */
+  readonly probability: number;
+}
+
+/**
+ * One visible phenotype with every genotype that produces it collapsed in. This
+ * is the "what will the clutch actually look like" view — the per-genotype
+ * {@link AggregatedOutcome}s folded so a single visual combo appears once instead
+ * of repeating per hidden-het permutation.
+ */
+export interface PhenotypeOutcome {
+  readonly phenotypeNames: readonly string[];
+  /** Market label — the joined phenotype names, or undefined for all-Normal. */
+  readonly comboName?: string;
+  /** Summed probability across every genotype folded into this phenotype. */
+  readonly decimalProbability: number;
+  readonly percentageProbability: string;
+  /** Possible-hets re-derived as P(carrier | phenotype), sorted most-likely first. */
+  readonly possibleHets: readonly PhenotypeHet[];
+  readonly isLethal: boolean;
+  readonly congenitalWarnings: readonly string[];
+  readonly sex?: AnimalSex;
+  readonly polygenics: readonly string[];
+}
+
+/** Grouping key for {@link aggregateByPhenotype}: the sorted visual names plus sex. */
+function phenotypeKey(o: { phenotypeNames: readonly string[]; sex?: AnimalSex }): string {
+  return `${[...o.phenotypeNames].sort().join('|')}~${o.sex ?? ''}`;
+}
+
+/**
+ * Folds per-genotype {@link AggregatedOutcome}s into one row per visible
+ * phenotype (+ sex). The engine emits a distinct outcome for every genotype, so
+ * one visible combo repeats once per hidden-het permutation; most UIs want the
+ * collapsed view. Within each group this sums the probabilities and re-derives
+ * every possible-het as a conditional `P(carrier at locus | this phenotype)` —
+ * every member of a group is non-visual at that locus, so the conditional is the
+ * carrier members' mass over the group's total mass, yielding the standard "66%
+ * Het" for a het × het cross shown once per locus. Rows are sorted most-visual-
+ * traits first, then by descending probability.
+ */
+export function aggregateByPhenotype(
+  outcomes: readonly AggregatedOutcome[],
+): PhenotypeOutcome[] {
+  const groups = new Map<string, AggregatedOutcome[]>();
+  for (const o of outcomes) {
+    const key = phenotypeKey(o);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(o);
+    else groups.set(key, [o]);
+  }
+
+  const folded: PhenotypeOutcome[] = [];
+  for (const members of groups.values()) {
+    const total = members.reduce((s, m) => s + m.decimalProbability, 0);
+
+    const carrierMass = new Map<string, number>();
+    for (const m of members) {
+      for (const h of m.possibleHets) {
+        carrierMass.set(h.locusId, (carrierMass.get(h.locusId) ?? 0) + m.decimalProbability);
+      }
+    }
+    const possibleHets: PhenotypeHet[] = [...carrierMass.entries()]
+      .map(([locusId, mass]) => ({ locusId, probability: total > 0 ? mass / total : 0 }))
+      .sort((a, b) => b.probability - a.probability);
+
+    const rep = members[0];
+    folded.push({
+      phenotypeNames: rep.phenotypeNames,
+      comboName: rep.comboName,
+      decimalProbability: total,
+      percentageProbability: `${Math.round(total * 100)}%`,
+      possibleHets,
+      isLethal: members.some((m) => m.isLethal),
+      congenitalWarnings: [...new Set(members.flatMap((m) => m.congenitalWarnings))],
+      sex: rep.sex,
+      polygenics: rep.polygenics,
+    });
+  }
+
+  return folded.sort(
+    (a, b) =>
+      b.phenotypeNames.length - a.phenotypeNames.length ||
+      b.decimalProbability - a.decimalProbability,
+  );
 }

@@ -216,7 +216,14 @@ export function disposeWorkers(): void {
   }
 }
 
-export { resolveSimpleInput } from './simple';
+export { resolveSimpleInput, resolveMorphString } from './simple';
+export type { MorphStringResolution } from './simple';
+
+export { createDictionaryIndex } from './dictionary';
+export type { DictionaryIndex, AlleleIndexEntry } from './dictionary';
+
+export { aggregateByPhenotype } from './aggregator';
+export type { PhenotypeOutcome, PhenotypeHet } from './aggregator';
 
 export type {
   AggregatedOutcome,
