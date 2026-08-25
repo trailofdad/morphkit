@@ -1,4 +1,4 @@
-import { aggregateOutcomes } from '../src/aggregator';
+import { aggregateOutcomes, aggregateByPhenotype } from '../src/aggregator';
 import { computePunnettMatrix } from '../src/engine';
 import { normalizeInput } from '../src/validation';
 import {
@@ -276,6 +276,53 @@ describe('AC-2: combo matching — yellowbelly + asphalt → "Freeway"', () => {
     const pair = makePair();
     const outcomes = aggregateOutcomes([yellowbellyOnly], pair, mockDictionary);
     expect(outcomes[0].comboName).toBe('Yellowbelly');
+  });
+
+  // Regression: a subset combo must NOT swallow an outcome that also expresses
+  // an unrelated visual. Freeway (yellowbelly complex) composes with Clown.
+  it('does not mislabel a combo + extra visual as just the combo', () => {
+    const comboPlusVisual: GenotypeOutcome = {
+      loci: [
+        { locusId: 'yellowbelly_complex', alleles: ['asphalt', 'yellowbelly'] },
+        { locusId: 'clown_locus', alleles: ['clown', 'clown'] },
+      ],
+      decimalProbability: 1.0,
+    };
+    const [out] = aggregateOutcomes([comboPlusVisual], makePair(), mockDictionary);
+    expect(out.phenotypeNames).toContain('Freeway');
+    expect(out.phenotypeNames).toContain('Clown');
+    expect(out.phenotypeNames).not.toContain('Yellowbelly');
+    expect(out.phenotypeNames).not.toContain('Asphalt');
+    // Combo reads as the headline, remaining visuals follow.
+    expect(out.comboName).toBe('Freeway Clown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phenotype-grouped view — aggregateByPhenotype folds hidden-het permutations
+// ---------------------------------------------------------------------------
+
+describe('aggregateByPhenotype', () => {
+  it('folds het clown × het clown into 2 rows with a 66% conditional het', () => {
+    // het × het at a recessive locus → the three genotypes of a Punnett square.
+    const genotypes: GenotypeOutcome[] = [
+      { loci: [{ locusId: 'clown_locus', alleles: ['clown', 'clown'] }], decimalProbability: 0.25 },
+      { loci: [{ locusId: 'clown_locus', alleles: ['clown', 'normal'] }], decimalProbability: 0.5 },
+      { loci: [{ locusId: 'clown_locus', alleles: ['normal', 'normal'] }], decimalProbability: 0.25 },
+    ];
+    const folded = aggregateByPhenotype(aggregateOutcomes(genotypes, makePair(), mockDictionary));
+
+    // Two visible rows: visual Clown, and Normal (the het + homo-normal genotypes fold together).
+    expect(folded).toHaveLength(2);
+    const visual = folded.find((o) => o.phenotypeNames.includes('Clown'));
+    const normal = folded.find((o) => o.phenotypeNames.length === 0);
+    expect(visual!.percentageProbability).toBe('25%');
+    expect(normal!.percentageProbability).toBe('75%');
+    // The folded normal row carries a single conditional het: carrier mass 0.5
+    // over non-visual mass 0.75 = 2/3 → the industry-standard 66% het.
+    expect(normal!.possibleHets).toHaveLength(1);
+    expect(normal!.possibleHets[0].locusId).toBe('clown_locus');
+    expect(Math.round(normal!.possibleHets[0].probability * 100)).toBe(67); // 2/3, rounded
   });
 });
 

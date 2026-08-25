@@ -200,6 +200,55 @@ const { output, warnings } = calculateMorphsSimple(
 // want the desugared complex input without running the calculation.
 ```
 
+### Free-text tier: one string of many morphs
+
+Listings and third-party exports rarely arrive as a clean array — they come as a single blob
+like `"Pastel Het Clown 66% Het Piebald"`. `resolveMorphString` tokenizes that against the
+dictionary (greedy longest-match on allele/combo names, honoring `Het` / `Dbl Het` /
+`Poss Het` / `NN% Het` prefixes, and treating an `" or "` as an ambiguity to surface rather than
+guess) and returns the desugared genotype plus the per-morph and leftover diagnostics:
+
+```ts
+import { resolveMorphString } from '@trailofdad/morphkit';
+
+const { genotype, morphs, warnings, unresolved } = resolveMorphString(
+  'Pastel Het Clown 66% Het Piebald',
+  dictionary,
+);
+// genotype → LocusInput[] ready for calculateMorphs; unresolved → words to review.
+```
+
+## Consumer utilities
+
+Two helpers exist so apps don't re-derive machinery morphkit already has internally.
+
+**`createDictionaryIndex(dictionary)`** builds an O(1), case-insensitive lookup over the
+dictionary's names, aliases, shortNames, and combos — resolve a morph string to its
+`{ locusId, alleleId, inheritance, isSexLinked }` identity, detect ambiguity, or read locus
+metadata, without walking `dictionary.loci` yourself:
+
+```ts
+import { createDictionaryIndex } from '@trailofdad/morphkit';
+
+const index = createDictionaryIndex(dictionary);
+index.resolveNameUnique('clown');      // → { locusId: 'clown_locus', alleleId: 'clown', ... }
+index.resolveName('genetic stripe');   // → [] or 1+ candidates; length > 1 ⇒ ambiguous
+index.getInheritance('clown_locus');   // → 'recessive'
+```
+
+**`aggregateByPhenotype(outcomes)`** folds the per-genotype `AggregatedOutcome[]` into one row
+per *visible* phenotype (+ sex). The engine emits a distinct outcome for every genotype, so one
+visible combo repeats once per hidden-het permutation; this collapses that into the
+"what the clutch actually looks like" view, summing probabilities and re-deriving each poss-het
+as the conditional `P(carrier | phenotype)` (the standard "66% Het" shown once per locus):
+
+```ts
+import { calculateMorphs, aggregateByPhenotype } from '@trailofdad/morphkit';
+
+const result = calculateMorphs(input, dictionary);
+const rows = aggregateByPhenotype(result.outcomes); // PhenotypeOutcome[], sorted for display
+```
+
 ## Possible hets & shed testing
 
 Each `genotype` locus can declare a carrier `zygosity` instead of spelling out both alleles:
