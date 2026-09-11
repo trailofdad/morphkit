@@ -41,13 +41,13 @@ function hasTrackedChanges() {
   }
 }
 
-function die(headline, details) {
+function die(headline, details, remedy) {
   console.error(`\n✖ ${headline}\n`);
   for (const line of details) console.error(`    ${line}`);
   console.error(
     `\n  npm publish builds from the working tree, not from HEAD — publishing now\n` +
       `  would ship code that is not in git.\n\n` +
-      `  Commit (or stash) the changes above, then publish again.\n` +
+      `  ${remedy}\n` +
       `  Real emergency? ${OVERRIDE}=1 npm publish\n`,
   );
   process.exit(1);
@@ -66,9 +66,11 @@ try {
 }
 
 if (!insideRepo) {
-  die('Not inside a git work tree, so the publish cannot be verified against git.', [
+  die(
+    'Not inside a git work tree, so the publish cannot be verified against git.',
+    [],
     'Publish from a clone of the repository.',
-  ]);
+  );
 }
 
 const problems = [];
@@ -89,7 +91,11 @@ if (untracked.length > 0) {
 }
 
 if (problems.length > 0) {
-  die('Refusing to publish: the working tree does not match git.', problems);
+  die(
+    'Refusing to publish: the working tree does not match git.',
+    problems,
+    'Commit (or stash) the changes above, then publish again.',
+  );
 }
 
 // Non-blocking: cannot reach the tarball, but worth surfacing before a release.
@@ -97,7 +103,9 @@ const strays = git(['ls-files', '--others', '--exclude-standard', '--', ':!src']
   .split('\n')
   .filter(Boolean);
 if (strays.length > 0) {
-  console.warn(`note: ${strays.length} untracked file(s) outside src/ (not published): ${strays.join(', ')}`);
+  console.warn(
+    `note: ${strays.length} untracked file(s) outside src/ (not published): ${strays.join(', ')}`,
+  );
 }
 
 console.log(`✔ working tree is clean — publishing ${git(['rev-parse', '--short', 'HEAD'])}`);
