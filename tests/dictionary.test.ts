@@ -38,6 +38,19 @@ describe('createDictionaryIndex', () => {
     expect(index.getAlleleName('clown_locus', 'clown')).toBe('Clown');
     expect(index.getInheritance('nope')).toBeUndefined();
   });
+
+  it('returns the full allele definition via getAllele', () => {
+    expect(index.getAllele('spider_complex', 'spider')).toEqual({
+      id: 'spider',
+      name: 'Spider',
+      defects: ['Neurological Wobble'],
+    });
+  });
+
+  it('returns undefined from getAllele for an unknown locus or allele', () => {
+    expect(index.getAllele('nope_locus', 'clown')).toBeUndefined();
+    expect(index.getAllele('clown_locus', 'nope')).toBeUndefined();
+  });
 });
 
 describe('resolveMorphString (free-text tier)', () => {
