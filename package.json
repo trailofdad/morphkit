@@ -19,7 +19,8 @@
     "build": "tsc",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
-    "prepublishOnly": "npm test && npm run build"
+    "check:clean-tree": "node scripts/assert-clean-tree.mjs",
+    "prepublishOnly": "npm run check:clean-tree && npm test && npm run build"
   },
   "keywords": [
     "genetics",
