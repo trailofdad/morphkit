@@ -57,7 +57,8 @@ The aggregator applies `dictionary.epistasisRules` *after* per-locus visual coll
 
 | Directory | Module | Responsibility |
 |---|---|---|
-| `src/simple/` | pre-MK-1 | `resolveSimpleInput` — desugars a per-parent morph-name list into a complex `MorphkitCalculationInput`. Thin front-end only: **no** Punnett or aggregation logic. |
+| `src/simple/` | pre-MK-1 | `resolveSimpleInput` — desugars a per-parent morph-name list into a complex `MorphkitCalculationInput`; `resolveMorphString` does the same for one free-text blob. Thin front-end only: **no** Punnett or aggregation logic. |
+| `src/dictionary/` | utility | `createDictionaryIndex` — an O(1), case-insensitive index over the dictionary's ids, names, aliases, shortNames and combos. Pure lookup, outside the pipeline; the simple tier is built on it and consumers import it directly. |
 | `src/validation/` | MK-1 | Normalizes payloads to explicit 2-allele loci arrays; lowercases locusIds/alleles; injects `["normal","normal"]` for loci present on only one parent; dictionary-aware allele/alias → canonical-id resolution. |
 | `src/engine/` | MK-2 | The Cartesian Punnett Matrix logic — pure independent-assortment fold over per-locus distributions, no phenotype knowledge. |
 | `src/aggregator/` | MK-3 & MK-4 | Translates genotypes to phenotypes, resolves combo names, computes Poss-Hets, flags lethality/defects, applies `polygenicGroups` gating (diagnostic mode) and `epistasisRules` visual masking. |
@@ -66,7 +67,9 @@ The aggregator applies `dictionary.epistasisRules` *after* per-locus visual coll
 | `src/types.ts` | Shared | All TypeScript interfaces and error classes. |
 | `tests/` | — | Jest test suites, one per module. |
 
-> **Two input tiers (both shipped).** The canonical *complex* input declares each locus + both alleles explicitly (RGI-accurate). The *simple* tier (`src/simple/` — a per-parent morph-name list with infer-and-warn on ambiguity) is a thin pre-MK-1 front-end that desugars names → a complex `MorphkitCalculationInput`, then runs the same MK-1 → MK-2 → MK-3/4 pipeline unchanged. See `CLAUDE.md` → "Simple API name-resolution contract" and "Two inheritance enums (do not conflate)" for the load-bearing contracts.
+> **Three input tiers (all shipped).** The canonical *complex* input declares each locus + both alleles explicitly (RGI-accurate). The *simple* tier (`src/simple/` — a per-parent morph-name list with infer-and-warn on ambiguity) and the *free-text* tier (`resolveMorphString` — one string such as `"Pastel Het Clown 66% Het Piebald"`, tokenized greedily against a `DictionaryIndex`) are thin pre-MK-1 front-ends that desugar names → a complex `MorphkitCalculationInput`, then run the same MK-1 → MK-2 → MK-3/4 pipeline unchanged.
+>
+> **Desugar, don't fork** is the rule for all of them: a new tier adds name handling only — never Punnett or aggregation logic. See `CLAUDE.md` → "Simple API name-resolution contract" (incl. "Free-text tier") and "Two inheritance enums (do not conflate)" for the load-bearing contracts.
 
 > **Two inheritance enums — do not conflate.** `InheritanceType` is the **dictionary** vocabulary (`recessive | dominant | incomplete_dominant | polygenic`); `InheritancePattern` is the **engine** vocabulary (`recessive | dominant | co-dominant | sex-linked`). `src/worker/pipeline.ts` maps one to the other. The engine uses `InheritancePattern` only to detect sex-linked loci; visual/het resolution in the aggregator keys off the original `InheritanceType`.
 
@@ -84,6 +87,9 @@ This file is the ruleset for *working on* the engine. If you are **integrating**
 | `calculateMorphsAsync(input, dictionary, workerUrl)` | Off-thread in a **persistent pooled** Web Worker; returns a `Promise`. `disposeWorkers()` releases workers eagerly. |
 | `calculateMorphsSimple(input, dictionary)` | Synchronous simple tier — `{ output, warnings }` from a morph-name list. |
 | `resolveSimpleInput(input, dictionary)` | Desugar only — returns the complex input + `MorphResolution[]` without calculating. |
+| `resolveMorphString(raw, dictionary, parent?)` | Free-text tier — desugars one morph string into `{ genotype, morphs, warnings, unresolved }`. |
+| `createDictionaryIndex(dictionary)` | O(1) name/alias/combo lookup (`DictionaryIndex`, `AlleleIndexEntry`). Build once, reuse. |
+| `aggregateByPhenotype(outcomes)` | Folds per-genotype `AggregatedOutcome[]` → one `PhenotypeOutcome` per visible phenotype, with `P(carrier \| phenotype)` hets. |
 | `syncDictionary(url)` | MK-6 dictionary fetch (main thread only). |
 
 Output a UI must respect: `comboName` falls back to joined `phenotypeNames` (undefined only for all-Normal); `isLethal` outcomes stay in `outcomes[]` and still count toward 100% (filter/re-normalize yourself); `warnings[]` is the soft-diagnostics channel; `phenotypeNames` may be rewritten by epistatic masking while `congenitalWarnings` is preserved.
