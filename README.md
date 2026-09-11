@@ -28,10 +28,11 @@ Morphkit is a pure-computation library with no runtime dependencies. The trait d
 
 ## Quick Start
 
-**Pick your entry point first** (all four run the same MK-1 → MK-2 → MK-3/4 pipeline):
+**Pick your entry point first** (all of them run the same MK-1 → MK-2 → MK-3/4 pipeline):
 
 - Know each parent's exact genotype? Use the **complex** tier (`{ locusId, alleles: [a, b] }`).
-- Only have a list of **morph names** per parent? Use the **simple** tier — `calculateMorphsSimple` (details under [API tiers](#api-tiers-complex-vs-simple)).
+- Only have a list of **morph names** per parent? Use the **simple** tier — `calculateMorphsSimple` (details under [API tiers](#api-tiers-complex-simple-free-text)).
+- Morphs arriving as **one string** (a listing, a third-party export)? Use the **free-text** tier — `resolveMorphString` (details under [API tiers](#api-tiers-complex-simple-free-text)).
 - Need it **off the UI thread** (large crosses, recalc on every keystroke without jank)? Use `calculateMorphsAsync` + a bundled worker.
 - SSR, a Node script, a test, or a cheap client-side recalc? Use the synchronous `calculateMorphs` — no worker, no `workerUrl` (details under [Synchronous vs. worker](#synchronous-vs-worker)).
 
@@ -163,16 +164,17 @@ import MorphkitWorker from 'morphkit/worker/morphkit.worker?worker';
 
 A minimal reference React integration lives in [`example/`](./example). For a full-featured UI built on morphkit, see **[morphkit-ui](https://github.com/trailofdad/morphkit-ui)** — a React component library that wraps the engine with a complete breeder-facing interface.
 
-## API tiers: complex vs. simple
+## API tiers: complex, simple, free-text
 
-Morphkit is architected around the **locus + allele** model (built with RGI / shed-test genetics in mind), so the canonical input is *complex*: you declare each locus and both of its alleles explicitly. Not every consumer needs that precision — many UIs only have a list of morph names per parent and just want outcomes and percentages back. To serve both, morphkit exposes two input tiers that resolve to the **same** pipeline.
+Morphkit is architected around the **locus + allele** model (built with RGI / shed-test genetics in mind), so the canonical input is *complex*: you declare each locus and both of its alleles explicitly. Not every consumer needs that precision — many UIs only have a list of morph names per parent and just want outcomes and percentages back. To serve both, morphkit exposes three input tiers that all resolve to the **same** pipeline.
 
 | Tier | Input shape | When to use |
 |---|---|---|
 | **Complex** (available today) | `genotype: [{ locusId, alleles: [a, b] }]` — every locus and both alleles stated explicitly | RGI-style apps that track genotypes precisely, including zygosity and het status |
 | **Simple** (available today) | `morphs: string[]` per parent — a flat list of morph names, no second allele required | Lightweight integrations that only know visual/named morphs and want outcomes + percentages |
+| **Free-text** (available today) | one string per parent, e.g. `"Pastel Het Clown 66% Het Piebald"` | Importing listings or third-party exports, where morphs arrive as an unsplit blob |
 
-**The simple tier is a thin front-end, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract) for the full contract). For example:
+**The name-based tiers are thin front-ends, not a second engine.** It desugars a morph-name list into a complex `MorphkitCalculationInput` using the dictionary, then runs the existing MK-1 → MK-2 → MK-3/4 pipeline unchanged. Because a bare morph name does not carry zygosity, the resolver applies inheritance-aware defaults and returns a **warning message** whenever a name is ambiguous or unresolvable (see [CLAUDE.md](./CLAUDE.md#simple-api-name-resolution-contract) for the full contract). For example:
 
 - `"Clown"` (recessive) → `[clown, clown]` — a recessive is only visual when homozygous
 - `"Het Clown"` → `[clown, normal]`
@@ -230,6 +232,7 @@ const index = createDictionaryIndex(dictionary);
 index.resolveNameUnique('clown');      // → { locusId: 'clown_locus', alleleId: 'clown', ... }
 index.resolveName('genetic stripe');   // → [] or 1+ candidates; length > 1 ⇒ ambiguous
 index.getInheritance('clown_locus');   // → 'recessive'
+index.getAllele('spider_complex', 'spider'); // → full AlleleDefinition (defects, shortNames, …)
 ```
 
 **`aggregateByPhenotype(outcomes)`** folds the per-genotype `AggregatedOutcome[]` into one row
@@ -269,11 +272,12 @@ Two dictionary-driven behaviors affect what `phenotypeNames` you get back. Neith
 
 ## Architecture
 
-Data flows through six layers (MK-1 through MK-6) with strict responsibility boundaries. No layer skips or reaches back.
+Data flows through six layers (MK-1 through MK-6) with strict responsibility boundaries. No layer skips or reaches back. Two optional modules sit outside that chain — `src/simple/` in front of MK-1, and `src/dictionary/` as a shared lookup neither the engine nor the aggregator depends on.
 
 | Layer | Path | Role |
 |---|---|---|
-| (simple tier) | `src/simple/` | Optional pre-MK-1 front-end: desugars a per-parent morph-name list into a complex `MorphkitCalculationInput`. No genetics logic of its own |
+| (simple tier) | `src/simple/` | Optional pre-MK-1 front-end: desugars a per-parent morph-name list — or one free-text string via `resolveMorphString` — into a complex `MorphkitCalculationInput`. No genetics logic of its own |
+| (utilities) | `src/dictionary/` | Optional, off to the side of the pipeline: `createDictionaryIndex` builds the shared O(1) name/alias/combo lookup. Used by the simple tier and exported for consumers |
 | MK-1 | `src/validation/` | Normalizes raw `MorphkitCalculationInput` → `NormalizedBreedingPair`; lowercases locusIds/alleles; fills implicit single-allele loci to `[allele, "normal"]` |
 | MK-2 | `src/engine/` | Cartesian Punnett Matrix — pure allele math, outputs `GenotypeOutcome[]`; verifies Hardy-Weinberg sum = 1.0 |
 | MK-3/4 | `src/aggregator/` | Translates genotypes → phenotypes, resolves combo names, computes poss-hets, applies polygenic-group gating and epistatic masking, flags lethality and congenital defects → `AggregatedOutcome[]` |

@@ -18,10 +18,12 @@ npx jest tests/engine.test.ts
 
 ## Architecture
 
-The pipeline has six layers with strict responsibility boundaries. Data flows left to right — no layer skips or reaches back.
+The pipeline has six layers with strict responsibility boundaries. Data flows left to right — no layer skips or reaches back. Two optional modules sit outside the chain: `src/simple/` in front of MK-1, and `src/dictionary/` as a shared lookup.
 
 | Layer | Path | Role |
 |---|---|---|
+| (pre-MK-1) | `src/simple/` | Optional front-end: desugars morph **names** — a per-parent list (`resolveSimpleInput`) or one free-text string (`resolveMorphString`) — into a complex `MorphkitCalculationInput`. No genetics logic of its own |
+| (utilities) | `src/dictionary/` | Optional, off to the side: `createDictionaryIndex` builds an O(1), case-insensitive index over the dictionary's ids, names, aliases, shortNames and combos (`DictionaryIndex` / `AlleleIndexEntry`). The simple tier is built on it; also exported for consumers. Pure lookup — no Punnett or phenotype logic |
 | MK-1 | `src/validation/` | Normalizes `MorphkitCalculationInput` → `NormalizedBreedingPair`. Fills implicit single-allele loci to `[allele, "normal"]`; **lowercases every locusId and allele**; injects `["normal", "normal"]` for any locus present on only one parent (locus symmetry). **Dictionary-aware when one is passed** (the pipeline always passes it): resolves allele synonyms/aliases → canonical id, throws `SchemaValidationError` for an unknown locus and `InvalidGenotypeError` for an allele not defined on its locus. Called without a dictionary it is purely structural (unit tests rely on this) |
 | MK-2 | `src/engine/` | Cartesian Punnett Matrix — pure root-allele math, outputs `GenotypeOutcome[]`; verifies Hardy-Weinberg sum = 1.0 |
 | MK-3/4 | `src/aggregator/` | Translates genotypes → phenotypes, resolves combo names (e.g. "Freeway"), computes `PossibleHet[]`, flags lethality and congenital defects → `AggregatedOutcome[]` |
@@ -54,6 +56,7 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 - **`comboName` is rarely undefined.** If no registered `ComboDefinition` matches, the aggregator falls back to the joined `phenotypeNames`; it is undefined only for all-Normal outcomes.
 - **Lethal outcomes are not removed or re-normalized.** `isLethal` flags the outcome, but it stays in `outcomes[]` and still counts toward the 100%. A UI must filter and re-normalize itself for hatch-only percentages.
 - **`calculationMode: 'diagnostic'` drives polygenic gating; the additive `polygenics` field is soft-validated.** In `standard` mode a `polygenic` locus is recessive-like (visual only when homozygous-mutant). In `diagnostic` mode, a `dictionary.polygenicGroups` entry (e.g. Desert Ghost = `dg_a`/`dg_b`/`dg_c`) suppresses its member loci's individual visuals and emits the group's `visualLabel` only when the `causalLocus` is homozygous-mutant. The separate additive `polygenics: string[]` field is still deduplicated and passed through onto every outcome; the pipeline (`collectPolygenicWarnings`, MK-1) now also compares each tag case-insensitively against `dictionary.polygenicTags` and emits a non-fatal `CalculationWarning` (`code: 'unknown_polygenic_tag'`) for any unknown tag — it is never dropped or thrown, and the genetic result is unaffected.
+- **`aggregateByPhenotype(outcomes)` is the display-facing fold.** MK-3/4 emits one `AggregatedOutcome` per *genotype*, so a single visible combo repeats once per hidden-het permutation. `aggregateByPhenotype` (`src/aggregator/`) folds those into one `PhenotypeOutcome` per visible phenotype (+ sex), summing probabilities and re-deriving each poss-het as the conditional `P(carrier | phenotype)` — the standard "66% Het" shown once per locus. It is a pure post-pass over `outcomes[]`; the engine and aggregator are unchanged, and lethal rows stay in (same caveat as above).
 - **`MorphkitCalculationOutput.warnings` is the soft-diagnostics channel.** Always present (empty when clean): a `readonly CalculationWarning[]` of `{ code, message }`. Distinct from the simple tier's per-morph `MorphResolution[]` (name resolution) — this one carries advisories raised by the genetic pipeline itself.
 
 ## Non-Negotiable Rules
@@ -94,7 +97,7 @@ A `LocusInput` may carry a `zygosity` of `'het'` (a proven heterozygote → `[al
 
 ## Simple API name-resolution contract
 
-Morphkit exposes two input tiers (see README → "API tiers"). The **complex** tier — explicit `{ locusId, alleles: [a, b] }` — is the canonical RGI-accurate form. The **simple** tier is implemented in `src/simple/` (`resolveSimpleInput`, plus the `calculateMorphsSimple` convenience in `src/index.ts`). It follows these rules:
+Morphkit exposes three input tiers (see README → "API tiers"). The **complex** tier — explicit `{ locusId, alleles: [a, b] }` — is the canonical RGI-accurate form. The **simple** tier is implemented in `src/simple/` (`resolveSimpleInput`, plus the `calculateMorphsSimple` convenience in `src/index.ts`); the **free-text** tier (`resolveMorphString`, same module) is documented under "Free-text tier" below and reuses everything here once it has tokenized the string. The simple tier follows these rules:
 
 **Architectural rule — desugar, don't fork.** The simple resolver is a thin pre-MK-1 front-end that converts a per-parent morph-name list into a standard `MorphkitCalculationInput` (complex form); the caller then runs the existing MK-1 → MK-2 → MK-3/4 pipeline **unchanged**. It contains **no** Punnett or aggregation logic. `resolveSimpleInput` returns `{ input: MorphkitCalculationInput, warnings: MorphResolution[] }`.
 
@@ -117,6 +120,18 @@ Morphkit exposes two input tiers (see README → "API tiers"). The **complex** t
 - `dominant` bare name → informational note that the super form cannot be inferred from the name; defaulting to het.
 
 The resolution result per morph is a `MorphResolution` (`{ input, parent, locusId?, alleles?, resolved, message? }`) so a UI can surface exactly which inputs were ambiguous. `warnings` carries one entry per input morph (both parents merged, tagged by `parent`); a `polygenic` bare name resolves recessive-like (`[name, name]`) under the standard-mode heuristic.
+
+### Free-text tier (`resolveMorphString`)
+
+A third entry point, layered on the same desugaring rule — listings and third-party exports arrive as one blob (`"Pastel Het Clown 66% Het Piebald"`), not a clean array. `resolveMorphString(raw, dictionary, parent?)` (`src/simple/`) tokenizes that against a `DictionaryIndex` and returns a `MorphStringResolution` (`{ genotype, morphs, warnings, unresolved }`). It adds **no** genetics — output feeds `resolveSimpleInput`/`mergeMorphs` and then the unchanged pipeline.
+
+Tokenizer contract:
+
+- **Greedy longest-match** on allele and combo names, up to `MAX_MORPH_WORDS` words per token.
+- **Het prefixes** (`Het` / `Dbl Het` / `Poss Het` / `NN% Het`) apply to the allele that follows **and persist to subsequent alleles** until another prefix appears — matching how breeders write `"Dbl Het Clown Pied"`.
+- **Combo names match only while no het prefix is active** (a "Het Freeway" is not a meaningful visual).
+- **`" or "` anywhere** makes the whole string too ambiguous to map: it returns empty `genotype`/`morphs` with the entire input in `unresolved`. Never guess.
+- Words matching no known allele or combo land in `unresolved` for manual review rather than throwing.
 
 ## Test Environment Note
 
