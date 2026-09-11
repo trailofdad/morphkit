@@ -1,4 +1,4 @@
-import { ComboDefinition, InheritanceType, MorphkitDictionary } from '../types';
+import { AlleleDefinition, ComboDefinition, InheritanceType, MorphkitDictionary } from '../types';
 
 // =============================================================================
 // Dictionary Index (public utility)
@@ -44,6 +44,8 @@ export interface DictionaryIndex {
   getLocusName(locusId: string): string | undefined;
   /** An allele's display name by locus + allele id, or undefined if unknown. */
   getAlleleName(locusId: string, alleleId: string): string | undefined;
+  /** The full allele definition by locus + allele id (for shortNames, defects, …). */
+  getAllele(locusId: string, alleleId: string): AlleleDefinition | undefined;
 }
 
 /**
@@ -105,5 +107,6 @@ export function createDictionaryIndex(dictionary: MorphkitDictionary): Dictionar
     getLocusName: (locusId) => dictionary.loci[locusId]?.name,
     getAlleleName: (locusId, alleleId) =>
       dictionary.loci[locusId]?.alleles[alleleId]?.name,
+    getAllele: (locusId, alleleId) => dictionary.loci[locusId]?.alleles[alleleId],
   };
 }
