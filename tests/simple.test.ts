@@ -228,4 +228,13 @@ describe('#1 calculateMorphsSimple — reuses the existing pipeline', () => {
     const total = output.outcomes.reduce((s, o) => s + o.decimalProbability, 0);
     expect(total).toBeCloseTo(1.0, 10);
   });
+
+  it('runs a "66% Het" parent as a pos_het carrier, not a proven het', () => {
+    const { output } = calculateMorphsSimple(simple(['66% Het Clown'], ['Clown']), mockDictionary);
+    const visual = output.outcomes
+      .filter((o) => o.phenotypeNames.includes('Clown'))
+      .reduce((s, o) => s + o.decimalProbability, 0);
+    // A proven het × visual gives 50% Clown; a 66% carrier gives 0.66 × 0.5.
+    expect(visual).toBeCloseTo(0.33, 10);
+  });
 });

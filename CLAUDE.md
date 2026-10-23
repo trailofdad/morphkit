@@ -105,13 +105,14 @@ Morphkit exposes three input tiers (see README → "API tiers"). The **complex**
 
 **Name → genotype resolution (infer-and-warn).** A bare morph name does not carry zygosity, so resolution is inheritance-aware and case-insensitive:
 
-1. **Prefix parsing first.** `"Het <Name>"` (and `"Possible Het <Name>"` / `"NN% Het <Name>"`) → `[name, "normal"]`. `"Super <Name>"` → `[name, name]`.
+1. **Prefix parsing first.** `"Het <Name>"` → `[name, "normal"]`. `"Possible / Poss / Pos Het <Name>"` and `"NN% Het <Name>"` → `[name, "normal"]` with `zygosity: 'pos_het'` (an unproven carrier; `NN%` becomes `carrierProbability`, and `"100% Het"` is a proven het). `"Super <Name>"` → `[name, name]`.
 2. **Registered combo names.** If the bare name matches a `ComboDefinition.marketName` (e.g. `"Freeway"`), expand to that combo's `requiredGenotype` loci.
 3. **Bare allele name**, resolved via its locus's dictionary `inheritance`:
    - `recessive` → `[name, name]` (a recessive is visual only when homozygous).
    - `incomplete_dominant` → `[name, "normal"]` (the het is the base visual; the `Super` form is the distinct homozygote).
    - `dominant` → `[name, "normal"]` (conventional safe default; the homozygous "super" form is visually indistinguishable from het by name alone — attach an informational message).
-4. **Merge by locus.** Two morphs resolving to the same locus combine into that locus's two alleles (e.g. `"Yellowbelly"` + `"Asphalt"` → `[yellowbelly, asphalt]`). More than two alleles landing on one locus is an error.
+4. **Merge by locus.** Two morphs resolving to the same locus combine into that locus's two alleles (e.g. `"Yellowbelly"` + `"Asphalt"` → `[yellowbelly, asphalt]`). More than two alleles landing on one locus is an error. A possible het must be its locus's only allele (`pos_het` is a single-mutant state): when another allele shares the locus, the possible het is excluded with a message.
+5. **Legacy duplicates.** A name matching both a live locus and one marked `supersededBy` resolves to the live locus only (`DictionaryIndex.resolveName`).
 
 **Ambiguity / warning cases (attach a `message`, exclude unresolved entries from the cross):**
 - Name not found as an allele, combo, or with a `Het`/`Super` prefix → `"Unknown morph 'X'"`.
@@ -123,12 +124,15 @@ The resolution result per morph is a `MorphResolution` (`{ input, parent, locusI
 
 ### Free-text tier (`resolveMorphString`)
 
-A third entry point, layered on the same desugaring rule — listings and third-party exports arrive as one blob (`"Pastel Het Clown 66% Het Piebald"`), not a clean array. `resolveMorphString(raw, dictionary, parent?)` (`src/simple/`) tokenizes that against a `DictionaryIndex` and returns a `MorphStringResolution` (`{ genotype, morphs, warnings, unresolved }`). It adds **no** genetics — output feeds `resolveSimpleInput`/`mergeMorphs` and then the unchanged pipeline.
+A third entry point, layered on the same desugaring rule — listings and third-party exports arrive as one blob (`"Pastel Het Clown 66% Het Piebald"`), not a clean array. `resolveMorphString(raw, dictionary, parent?, options?)` (`src/simple/`) tokenizes that against a `DictionaryIndex` and returns a `MorphStringResolution` (`{ genotype, morphs, warnings, unresolved }`). It adds **no** genetics — output feeds `resolveSimpleInput`/`mergeMorphs` and then the unchanged pipeline.
 
 Tokenizer contract:
 
 - **Greedy longest-match** on allele and combo names, up to `MAX_MORPH_WORDS` words per token.
-- **Het prefixes** (`Het` / `Dbl Het` / `Poss Het` / `NN% Het`) apply to the allele that follows **and persist to subsequent alleles** until another prefix appears — matching how breeders write `"Dbl Het Clown Pied"`.
+- **Het prefixes** (`Het` / `Dbl Het` / `Poss Het` / `Pos Het` / `NN% Het`) apply to the allele that follows. Their reach is `options.hetScope`:
+  - `'persist'` (default) — **persist to subsequent alleles** until another prefix appears, matching how breeders write `"Dbl Het Clown Pied"`.
+  - `'next'` — cover **only the next trait**, and are spent even when that trait is unknown, so a prefix never jumps an unresolved word. This is MorphMarket's trait-list convention (`"clown het Axanthic (VPI) lavender albino"` = visual Clown, het VPI, visual Lavender).
+- **Possible-het prefixes keep their percentage** in the per-morph token (`"66% Het Clown"`), so it reaches `carrierProbability`.
 - **Combo names match only while no het prefix is active** (a "Het Freeway" is not a meaningful visual).
 - **`" or "` anywhere** makes the whole string too ambiguous to map: it returns empty `genotype`/`morphs` with the entire input in `unresolved`. Never guess.
 - Words matching no known allele or combo land in `unresolved` for manual review rather than throwing.

@@ -349,6 +349,12 @@ export interface LocusDefinition {
   name: string; // e.g., "Yellowbelly Complex"
   inheritance: InheritanceType;
   isSexLinked: boolean; // True for Banana/Coral Glow
+  /**
+   * Marks a legacy duplicate of another locus. The locus stays valid (stored
+   * genotypes may reference its id), but name lookups prefer the locus named
+   * here when a name matches both.
+   */
+  supersededBy?: string;
   alleles: Record<string, AlleleDefinition>; // O(1) lookup map of alleles at this locus
 }
 

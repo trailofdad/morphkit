@@ -216,6 +216,17 @@ const { genotype, morphs, warnings, unresolved } = resolveMorphString(
 // genotype → LocusInput[] ready for calculateMorphs; unresolved → words to review.
 ```
 
+Possible-het prefixes (`Poss Het`, `Pos Het`, `66% Het`) produce a `zygosity: 'pos_het'` locus,
+with the percentage as `carrierProbability`, so an unproven carrier is never stored as a proven
+het. By default a het prefix carries over to every following trait (`"Dbl Het Clown Pied"`).
+For sources where each prefix covers exactly one trait — MorphMarket's trait lists, e.g.
+`"clown het Axanthic (VPI) lavender albino"` — pass `{ hetScope: 'next' }`:
+
+```ts
+resolveMorphString('clown het pied pastel', dictionary, 'sire', { hetScope: 'next' });
+// → visual Clown, het Pied, Pastel
+```
+
 ## Consumer utilities
 
 Two helpers exist so apps don't re-derive machinery morphkit already has internally.
