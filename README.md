@@ -162,7 +162,7 @@ import MorphkitWorker from 'morphkit/worker/morphkit.worker?worker';
 // then pass new MorphkitWorker() directly — see example/src/hooks/useMorphkit.ts
 ```
 
-A minimal reference React integration lives in [`example/`](./example). For a full-featured UI built on morphkit, see **[morphkit-ui](https://github.com/trailofdad/morphkit-ui)** — a React component library that wraps the engine with a complete breeder-facing interface.
+A minimal reference React integration lives in [`example/`](./example). For a complete breeding calculator built on morphkit, see **[morphkit-calculator](https://github.com/trailofdad/morphkit-calculator)** ([`@trailofdad/morphkit-calculator`](https://www.npmjs.com/package/@trailofdad/morphkit-calculator) on npm). It adds the layer between the engine and a UI: parent and trait selection, zygosity options, outcomes grouped by phenotype, labels and combo names, and dictionary loading, plus optional unstyled React components (`/react`). It replaces the deprecated `morphkit-ui`.
 
 ## API tiers: complex, simple, free-text
 
