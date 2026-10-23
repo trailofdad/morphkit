@@ -31,7 +31,9 @@ export interface DictionaryIndex {
    * Every allele matching `raw` (its id, display name, alias, or shortName),
    * case-insensitively. A length > 1 means the name is ambiguous — it resolves
    * to more than one locus (e.g. a spelling registered as an alias of one locus
-   * and the canonical name of another). Empty when unknown.
+   * and the canonical name of another). Empty when unknown. When a name matches
+   * both a live locus and a legacy duplicate (`supersededBy`), only the live
+   * matches are returned.
    */
   resolveName(raw: string): readonly AlleleIndexEntry[];
   /** The single allele `raw` resolves to, or undefined if unknown or ambiguous. */
@@ -96,11 +98,19 @@ export function createDictionaryIndex(dictionary: MorphkitDictionary): Dictionar
     for (const short of combo.shortNames ?? []) addCombo(short, combo);
   }
 
+  // Prefer live loci over legacy duplicates (`supersededBy`) that share a name;
+  // fall back to the legacy match when it is the only one.
+  const lookup = (raw: string): readonly AlleleIndexEntry[] => {
+    const list = alleles.get(raw.toLowerCase().trim()) ?? [];
+    const live = list.filter((c) => !dictionary.loci[c.locusId]?.supersededBy);
+    return live.length > 0 ? live : list;
+  };
+
   return {
-    resolveName: (raw) => alleles.get(raw.toLowerCase().trim()) ?? [],
+    resolveName: lookup,
     resolveNameUnique: (raw) => {
-      const list = alleles.get(raw.toLowerCase().trim());
-      return list && list.length === 1 ? list[0] : undefined;
+      const list = lookup(raw);
+      return list.length === 1 ? list[0] : undefined;
     },
     resolveCombo: (raw) => combos.get(raw.toLowerCase().trim()),
     getInheritance: (locusId) => dictionary.loci[locusId]?.inheritance,

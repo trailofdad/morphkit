@@ -217,7 +217,7 @@ export function disposeWorkers(): void {
 }
 
 export { resolveSimpleInput, resolveMorphString } from './simple';
-export type { MorphStringResolution } from './simple';
+export type { MorphStringResolution, HetScope, ResolveMorphStringOptions } from './simple';
 
 export { createDictionaryIndex } from './dictionary';
 export type { DictionaryIndex, AlleleIndexEntry } from './dictionary';
